@@ -2,11 +2,11 @@
 <html lang="pt-BR">
 
 <head>
-  <script src="https://js.puter.com/v2/"></script>
+  <script src="https://js.puter.com/v2/" defer></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AG Capital | Trading Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -54,8 +54,13 @@
 
 <body>
   <div id="error-overlay"></div>
-  <div id="root"></div>
-  <script type="module" src="./index.tsx"></script>
+  <div id="root">
+    <div
+      style="color: white; font-family: sans-serif; height: 100vh; display: flex; align-items: center; justify-content: center;">
+      Loading FlowSniper... (If this stays, check Console)
+    </div>
+  </div>
+  <script type="module" src="/index.tsx"></script>
 </body>
 
 </html>
