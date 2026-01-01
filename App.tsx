@@ -39,9 +39,14 @@ import { FlowSniperEngine } from './services/flowSniperEngine';
 const App: React.FC = () => {
   // Estados de Controle
   const [manager] = useState<ManagerProfile>(mockManager);
-  const [activeTab, setActiveTab] = useState<'overview' | 'assets' | 'gas' | 'robots'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'assets' | 'gas' | 'robots' | 'settings'>('overview');
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [botActive, setBotActive] = useState(false);
+  const [mode, setMode] = useState<'REAL' | 'DEMO'>('DEMO');
+
+  // Credentials State
+  const [privateKey, setPrivateKey] = useState(localStorage.getItem('fs_private_key') || '');
+  const [rpcUrl, setRpcUrl] = useState(localStorage.getItem('fs_polygon_rpc') || '');
   const [arbitrageLogs, setArbitrageLogs] = useState<ArbitrageStep[]>([]);
 
   // Estados Financeiros
@@ -101,11 +106,18 @@ const App: React.FC = () => {
   // --- LOGIC MERGE: Start/Stop Engine ---
   useEffect(() => {
     if (botActive && sniperRef.current) {
-      sniperRef.current.start();
+      sniperRef.current.start(mode);
     } else if (sniperRef.current) {
       sniperRef.current.stop();
     }
-  }, [botActive]);
+  }, [botActive, mode]);
+
+  // Save Credentials
+  const saveCredentials = () => {
+    if (privateKey) localStorage.setItem('fs_private_key', privateKey);
+    if (rpcUrl) localStorage.setItem('fs_polygon_rpc', rpcUrl);
+    alert('Credenciais Salvas com Segurança (Local Storage)');
+  };
 
   // --- LOGIC MERGE: AI & Market Data Fetch ---
   useEffect(() => {
@@ -186,10 +198,11 @@ const App: React.FC = () => {
           <SidebarItem active={activeTab === 'assets'} onClick={() => setActiveTab('assets')} icon={<Coins size={20} />} label="Gestão de Liquidez" />
           <SidebarItem active={activeTab === 'gas'} onClick={() => setActiveTab('gas')} icon={<Fuel size={20} />} label="Reserva de Gás" />
           <SidebarItem active={activeTab === 'robots'} onClick={() => setActiveTab('robots')} icon={<Bot size={20} />} label="Motor Sniper" />
+          <SidebarItem active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings size={20} />} label="Configurações" />
         </nav>
 
         <div className="mt-auto pt-6 border-t border-zinc-800/50 flex items-center justify-between text-zinc-500">
-          <Settings size={18} className="cursor-pointer hover:text-white transition-colors" />
+          <Settings size={18} className="cursor-pointer hover:text-white transition-colors" onClick={() => setActiveTab('settings')} />
           <Bell size={18} className="cursor-pointer hover:text-white transition-colors" />
           <LogOut size={18} className="cursor-pointer text-rose-500 hover:text-rose-400" />
         </div>
@@ -323,8 +336,23 @@ const App: React.FC = () => {
                     <h2 className="text-4xl font-black italic tracking-tighter uppercase mb-1">FLOWSNIPER ENGINE</h2>
                     <p className="text-xs text-zinc-500 font-bold uppercase tracking-[0.2em] flex items-center gap-2">
                       <Circle size={8} fill={botActive ? '#10b981' : '#71717a'} className="border-none" />
-                      Private Master v4.0
+                      Private Master v4.0 • <span className={`${mode === 'REAL' ? 'text-rose-500' : 'text-emerald-500'} font-black`}>{mode === 'REAL' ? 'LIVE TRADING' : 'DEMO MODE'}</span>
                     </p>
+
+                    <div className="flex gap-2 mt-4">
+                      <button
+                        onClick={() => { setBotActive(false); setMode('DEMO'); }}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${mode === 'DEMO' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-transparent text-zinc-600 border-zinc-800 hover:border-zinc-600'}`}
+                      >
+                        Demo
+                      </button>
+                      <button
+                        onClick={() => { setBotActive(false); setMode('REAL'); }}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${mode === 'REAL' ? 'bg-rose-600 text-white border-rose-600 shadow-[0_0_20px_rgba(225,29,72,0.4)]' : 'bg-transparent text-zinc-600 border-zinc-800 hover:border-zinc-600'}`}
+                      >
+                        Live Real
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <button
@@ -478,6 +506,51 @@ const App: React.FC = () => {
                     />
                   </div>
                   <button className="w-full bg-blue-600 py-6 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-500 transition-all active:scale-95 shadow-2xl shadow-blue-500/20 border border-blue-400/20">Recarregar Combustível</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: SETTINGS (NOVA) */}
+          {activeTab === 'settings' && (
+            <div className="space-y-10 animate-in fade-in duration-300">
+              <div className="bg-[#141417] rounded-[3rem] border border-zinc-800/50 p-12 shadow-2xl">
+                <h2 className="text-3xl font-black italic tracking-tighter uppercase mb-2">Configurações do Nó</h2>
+                <p className="text-zinc-500 text-sm mb-10">Gerencie suas chaves de acesso e conexão RPC. Seus dados são salvos apenas no seu navegador.</p>
+
+                <div className="space-y-8 max-w-2xl">
+                  <div className="space-y-3">
+                    <label className="text-xs font-bold uppercase tracking-widest text-zinc-400">Chave Privada (Private Key)</label>
+                    <div className="relative">
+                      <Key className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600" size={18} />
+                      <input
+                        type="password"
+                        value={privateKey}
+                        onChange={(e) => setPrivateKey(e.target.value)}
+                        className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-2xl py-5 pl-14 pr-6 text-emerald-500 font-mono text-sm outline-none focus:border-[#f01a74]/50 transition-all placeholder:text-zinc-800"
+                        placeholder="0x..."
+                      />
+                    </div>
+                    <p className="text-[10px] text-zinc-600 italic">Nunca compartilhe sua chave privada. Ela é usada para assinar transações no modo REAL.</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-xs font-bold uppercase tracking-widest text-zinc-400">Polygon RPC URL</label>
+                    <div className="relative">
+                      <Activity className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600" size={18} />
+                      <input
+                        type="text"
+                        value={rpcUrl}
+                        onChange={(e) => setRpcUrl(e.target.value)}
+                        className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-2xl py-5 pl-14 pr-6 text-blue-400 font-mono text-sm outline-none focus:border-[#f01a74]/50 transition-all placeholder:text-zinc-800"
+                        placeholder="https://polygon-rpc.com"
+                      />
+                    </div>
+                  </div>
+
+                  <button onClick={saveCredentials} className="px-10 py-5 bg-[#f01a74] rounded-2xl font-black text-xs uppercase tracking-widest text-white shadow-xl shadow-[#f01a74]/20 hover:bg-[#d01664] transition-all active:scale-95">
+                    Salvar Credenciais
+                  </button>
                 </div>
               </div>
             </div>
