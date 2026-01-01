@@ -1,0 +1,7 @@
+{
+  "name": "FlowSniper | DeFi Trading Bot",
+  "description": "FlowSniper is a high-frequency DeFi trading protocol on the Polygon network, optimizing for slippage, liquidity fees, and automated yield generation with full user custody.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
