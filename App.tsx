@@ -166,17 +166,44 @@ const App: React.FC = () => {
     const initData = async () => {
       setLoading(true);
       try {
-        // Fetch real market data
+        // Timeout de segurança: Se a IA demorar mais de 10s, destrava
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("AI Timeout")), 10000)
+        );
+
         const history = await fetchHistoricalData('MATICUSDT', '1', 50);
+
         if (history.length > 0) {
-          // Puter AI Analysis
-          const aiResult = await analyzePerformance(mockAssets, mockTransactions);
+          // Promise race entre a análise e o timeout
+          const aiResult = await Promise.race([
+            analyzePerformance(mockAssets, mockTransactions),
+            timeoutPromise
+          ]) as any;
+
           setAnalysis(aiResult);
+        } else {
+          console.warn("Market Data unavailable, skipping AI");
+          setAnalysis({
+            suggestedStrategy: "Accumulation (Offline Data)",
+            riskLevel: "Low",
+            marketSentiment: "Neutral",
+            confidence: 50,
+            action: "HOLD"
+          });
         }
       } catch (e) {
-        console.error("Data init failed", e);
+        console.error("Data init failed or Timed out", e);
+        // Fallback state em caso de erro
+        setAnalysis({
+          suggestedStrategy: "Scalping (Fallback Mode)",
+          riskLevel: "Medium",
+          marketSentiment: "Volatile",
+          confidence: 60,
+          action: "WAIT"
+        });
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     initData();
   }, []);
@@ -316,8 +343,8 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <SummaryCard
                   title="Capital Disponível"
-                  value="0.000000"
-                  unit="USDT"
+                  value={mode === 'DEMO' ? (demoBalance || 0).toFixed(2) : (manager.balance || "0.00")}
+                  unit={mode === 'DEMO' ? "USDT (DEMO)" : "USDT"}
                   onAdd={() => setActiveTab('assets')}
                   onRemove={() => setActiveTab('assets')}
                 />
