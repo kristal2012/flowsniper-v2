@@ -74,7 +74,13 @@ const App: React.FC = () => {
   // Estados de Formulário
   const [liquidityAction, setLiquidityAction] = useState<'add' | 'remove'>('add');
   const [liquidityAmount, setLiquidityAmount] = useState('');
-  const [gasAmount, setGasAmount] = useState('');
+  const [gasAmount, setGasAmount] = useState<string>('');
+  const [openAiKey, setOpenAiKey] = useState<string>(() => localStorage.getItem('flowsniper_openai_key') || '');
+
+  // Persistir Chave AI
+  useEffect(() => {
+    localStorage.setItem('flowsniper_openai_key', openAiKey);
+  }, [openAiKey]);
 
   const rechargeGas = () => {
     if (mode === 'DEMO') {
@@ -195,7 +201,7 @@ const App: React.FC = () => {
 
           try {
             const aiResult = await Promise.race([
-              analyzePerformance(mockAssets, mockTransactions).finally(() => clearTimeout(timeoutHandle)),
+              analyzePerformance(mockAssets, mockTransactions, openAiKey).finally(() => clearTimeout(timeoutHandle)),
               timeoutPromise
             ]) as any;
 
@@ -650,6 +656,22 @@ const App: React.FC = () => {
                       />
                     </div>
                     <p className="text-[10px] text-zinc-600 italic">Nunca compartilhe sua chave privada. Ela é usada para assinar transações no modo REAL.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                      <Cpu size={14} className="text-[#f01a74]" /> OpenAI API Key (Opcional - Backup do Puter)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="password"
+                        value={openAiKey}
+                        onChange={(e) => setOpenAiKey(e.target.value)}
+                        placeholder="sk-..."
+                        className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-2xl p-5 font-mono text-xs outline-none focus:border-[#f01a74]/50 transition-all"
+                      />
+                    </div>
+                    <p className="text-[9px] text-zinc-600 italic">* Se deixado em branco, o sistema tentará usar o Puter (Grátis) automaticamente.</p>
                   </div>
 
                   <div className="space-y-3">
