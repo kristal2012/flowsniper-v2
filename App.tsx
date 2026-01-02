@@ -59,6 +59,7 @@ const App: React.FC = () => {
   // Credentials State
   const [privateKey, setPrivateKey] = useState(localStorage.getItem('fs_private_key') || '');
   const [rpcUrl, setRpcUrl] = useState(localStorage.getItem('fs_polygon_rpc') || '');
+  const [demoBalance, setDemoBalance] = useState<number>(0); // New Demo Balance State
   const [arbitrageLogs, setArbitrageLogs] = useState<ArbitrageStep[]>([]);
 
   // Estados Financeiros
@@ -497,7 +498,10 @@ const App: React.FC = () => {
               <div className="bg-[#141417] rounded-[3rem] p-16 border border-zinc-800/50 text-center relative overflow-hidden group shadow-2xl">
                 <div className="absolute inset-0 bg-gradient-to-t from-[#f01a74]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
                 <p className="text-zinc-500 text-xs font-black uppercase tracking-[0.4em] mb-4 relative z-10">Capital Sob Gestão Privada</p>
-                <h2 className="text-7xl font-black font-mono tracking-tighter relative z-10">0.000000 <span className="text-zinc-700 text-4xl uppercase font-sans">USDT</span></h2>
+                <h2 className="text-7xl font-black font-mono tracking-tighter relative z-10">
+                  {mode === 'DEMO' ? demoBalance.toFixed(2) : manager.balance || '0.00'}
+                  <span className="text-zinc-700 text-4xl uppercase font-sans">USDT</span>
+                </h2>
               </div>
 
               <div className="bg-[#141417] rounded-[3rem] border border-zinc-800/50 overflow-hidden shadow-2xl">
@@ -515,7 +519,24 @@ const App: React.FC = () => {
                       placeholder="0.00"
                       className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-3xl p-6 font-mono text-4xl text-center outline-none focus:border-[#f01a74]/50 transition-all shadow-inner"
                     />
-                    <button className="w-full bg-[#f01a74] py-6 rounded-3xl font-black text-sm uppercase tracking-widest hover:bg-[#d01664] transition-all active:scale-[0.98] shadow-2xl shadow-[#f01a74]/20 border border-[#f01a74]/20">Confirmar Operação Privada</button>
+                    <button
+                      onClick={() => {
+                        if (mode === 'DEMO' && liquidityAction === 'add') {
+                          setDemoBalance(prev => prev + Number(liquidityAmount));
+                          setLiquidityAmount('');
+                          alert(`APORTE SIMULADO DE ${liquidityAmount} USDT CONFIRMADO!`);
+                        } else if (mode === 'DEMO' && liquidityAction === 'remove') {
+                          setDemoBalance(prev => Math.max(0, prev - Number(liquidityAmount)));
+                          setLiquidityAmount('');
+                          alert(`SAQUE SIMULADO DE ${liquidityAmount} USDT CONFIRMADO!`);
+                        } else {
+                          alert("Modo REAL: Funcionalidade de Depósito via contrato inteligente em breve.");
+                        }
+                      }}
+                      className="w-full bg-[#f01a74] py-6 rounded-3xl font-black text-sm uppercase tracking-widest hover:bg-[#d01664] transition-all active:scale-[0.98] shadow-2xl shadow-[#f01a74]/20 border border-[#f01a74]/20"
+                    >
+                      Confirmar Operação {mode === 'DEMO' ? '(SIMULAÇÃO)' : 'Privada'}
+                    </button>
                     <p className="text-[10px] text-zinc-600 font-medium italic">* Os fundos nunca saem do seu contrato privado durante a operação.</p>
                   </div>
                 </div>
