@@ -183,7 +183,7 @@ const App: React.FC = () => {
       setLoading(true);
       try {
         // Timeout de segurança: Se a IA demorar mais de 10s, destrava
-        const history = await fetchHistoricalData('MATICUSDT', '1', 50);
+        const history = await fetchHistoricalData('POLUSDT', '1', 50);
 
         if (history.length > 0) {
           // Wrapped Promise Race with Cleanup

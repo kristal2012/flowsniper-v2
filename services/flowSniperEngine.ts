@@ -66,7 +66,7 @@ export class FlowSniperEngine {
                 continue;
             }
 
-            const price = await fetchCurrentPrice('MATICUSDT');
+            const price = await fetchCurrentPrice('POLUSDT');
 
             if (price > 0) {
                 // Randomly choose between Slippage capture and LP Fee capture
