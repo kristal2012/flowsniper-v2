@@ -205,7 +205,8 @@ const App: React.FC = () => {
               timeoutPromise
             ]) as any;
 
-            setAnalysis(aiResult);
+            const provider = openAiKey.startsWith('sk-') ? 'OpenAI' : (typeof puter !== 'undefined' ? 'Puter.js' : 'Pollinations AI');
+            setAnalysis({ ...aiResult, provider });
           } catch (raceError) {
             throw raceError; // Re-throw to be caught by outer catch
           }
@@ -340,7 +341,7 @@ const App: React.FC = () => {
                         <div className="bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded text-[10px] font-bold border border-emerald-500/20 uppercase">
                           {analysis.riskLevel}
                         </div>
-                        <span className="text-[10px] text-zinc-500">Powered by Puter.js (GPT-4o)</span>
+                        <span className="text-[10px] text-zinc-500">Powered by {analysis.provider || 'AI Engine'}</span>
                       </div>
                     </div>
                   </div>
