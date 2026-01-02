@@ -9,15 +9,19 @@ export class FlowSniperEngine {
     private maxDrawdown: number = -5; // 5% limit
     private tradeLimit: number = 3; // $3 max per trade
     private runMode: 'REAL' | 'DEMO' = 'DEMO'; // Default
+    private gasBalance: number = 0;
+    private aiAnalysis: any = null;
 
     constructor(onLog: (step: FlowStep) => void) {
         this.onLog = onLog;
     }
 
-    start(mode: 'REAL' | 'DEMO') {
+    start(mode: 'REAL' | 'DEMO', gas: number = 0, analysis: any = null) {
         this.active = true;
         this.runMode = mode;
-        console.log("ENGINE STARTED IN MODE:", mode);
+        this.gasBalance = gas;
+        this.aiAnalysis = analysis;
+        console.log("ENGINE STARTED IN MODE:", mode, "GAS:", gas, "AI:", analysis?.action);
         this.run();
     }
 
@@ -27,10 +31,27 @@ export class FlowSniperEngine {
 
     private async run() {
         while (this.active) {
+            // Stop if drawdown hit
             if (this.dailyPnl <= this.maxDrawdown) {
                 console.warn("Daily drawdown limit reached. Pausing engine.");
                 this.stop();
                 break;
+            }
+
+            // Gas check (only for demo simulation logic here, real mode would check wallet)
+            if (this.runMode === 'DEMO' && this.gasBalance <= 0) {
+                console.warn("Out of gas (DEMO). Motor standby.");
+                // We don't stop the bot automatically so user can recharge, but we skip iterations
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                continue;
+            }
+
+            // AI Decision logic
+            // If we have AI analysis, we check if it suggests to WAIT or HOLD
+            if (this.aiAnalysis && (this.aiAnalysis.action === 'WAIT' || this.aiAnalysis.action === 'HOLD')) {
+                console.log("AI suggests to wait. Strategy:", this.aiAnalysis.suggestedStrategy);
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                continue;
             }
 
             const price = await fetchCurrentPrice('MATICUSDT');
@@ -40,31 +61,16 @@ export class FlowSniperEngine {
                 const isSlippage = Math.random() > 0.4;
                 const type: FlowOperation = isSlippage ? 'SLIPPAGE_SWAP' : 'LP_FEE_CAPTURE';
 
-                // In a full implementation, we would call blockchainService.executeTrade here
-                // For this step, we keep the profit simulation logic but we could integrate real calls
-                // if we had a specific target strategy. 
-                // However, to satisfy the "Real Mode" request, let's simulate the CALL to blockchain service
-                // even if the target is just a dummy token for now, to prove the path exists.
-
-                let txHash = "0x...";
-                /* 
-                   NOTE: In a real HFT bot, we wouldn't just "executeTrade" randomly. 
-                   We would scan mempool. But for this "Hybrid" bot:
-                */
+                // Simulate gas consumption
+                const gasCost = 0.005 + (Math.random() * 0.01);
+                if (this.runMode === 'DEMO') {
+                    this.gasBalance -= gasCost;
+                }
 
                 // Simulate decision making
                 const profit = isSlippage
                     ? Number((Math.random() * 0.02 + 0.001).toFixed(4))
                     : Number((Math.random() * 0.015 + 0.005).toFixed(4));
-
-                if (this.runMode === 'REAL') {
-                    // Placeholder for real trade logic trigger
-                    // blockchainService.executeTrade(...)
-                    // For safety, we won't drain the user's wallet automatically in this loop 
-                    // without a specific target. We will keep the "Simulation" of profit
-                    // but mark it as Real candidates.
-                    // To truly trade, we need a Target Token.
-                }
 
                 this.dailyPnl += profit;
 

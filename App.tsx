@@ -60,6 +60,7 @@ const App: React.FC = () => {
   const [privateKey, setPrivateKey] = useState(localStorage.getItem('fs_private_key') || '');
   const [rpcUrl, setRpcUrl] = useState(localStorage.getItem('fs_polygon_rpc') || '');
   const [demoBalance, setDemoBalance] = useState<number>(0); // New Demo Balance State
+  const [demoGasBalance, setDemoGasBalance] = useState<number>(0); // New Demo Gas State
   const [sniperLogs, setSniperLogs] = useState<SniperStep[]>([]);
 
   // Estados Financeiros
@@ -74,6 +75,16 @@ const App: React.FC = () => {
   const [liquidityAction, setLiquidityAction] = useState<'add' | 'remove'>('add');
   const [liquidityAmount, setLiquidityAmount] = useState('');
   const [gasAmount, setGasAmount] = useState('');
+
+  const rechargeGas = () => {
+    if (mode === 'DEMO') {
+      setDemoGasBalance(prev => prev + Number(gasAmount));
+      setGasAmount('');
+      alert(`RECARGA SIMULADA DE ${gasAmount} POL CONFIRMADA!`);
+    } else {
+      alert("Modo REAL: Recarga via contrato inteligente em breve.");
+    }
+  };
 
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const sniperRef = useRef<FlowSniperEngine | null>(null);
@@ -119,7 +130,7 @@ const App: React.FC = () => {
   // --- LOGIC MERGE: Start/Stop Engine ---
   useEffect(() => {
     if (botActive && sniperRef.current) {
-      sniperRef.current.start(mode);
+      sniperRef.current.start(mode, demoGasBalance, analysis);
     } else if (sniperRef.current) {
       sniperRef.current.stop();
     }
@@ -356,7 +367,7 @@ const App: React.FC = () => {
                 />
                 <SummaryCard
                   title="Reserva Operacional"
-                  value="--"
+                  value={mode === 'DEMO' ? demoGasBalance.toFixed(2) : "--"}
                   unit="POL"
                   onAdd={() => setActiveTab('gas')}
                   onRemove={() => setActiveTab('gas')}
@@ -596,11 +607,18 @@ const App: React.FC = () => {
                     <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-4">Valor para Abastecimento (POL)</p>
                     <input
                       type="number"
+                      value={gasAmount}
+                      onChange={(e) => setGasAmount(e.target.value)}
                       className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-2xl p-5 font-mono text-3xl text-center outline-none focus:border-blue-500/50 transition-all"
                       placeholder="0.00 POL"
                     />
                   </div>
-                  <button className="w-full bg-blue-600 py-6 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-500 transition-all active:scale-95 shadow-2xl shadow-blue-500/20 border border-blue-400/20">Recarregar Combustível</button>
+                  <button
+                    onClick={rechargeGas}
+                    className="w-full bg-blue-600 py-6 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-500 transition-all active:scale-95 shadow-2xl shadow-blue-500/20 border border-blue-400/20"
+                  >
+                    Recarregar Combustível
+                  </button>
                 </div>
               </div>
             </div>
