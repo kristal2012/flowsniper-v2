@@ -167,20 +167,26 @@ const App: React.FC = () => {
       setLoading(true);
       try {
         // Timeout de segurança: Se a IA demorar mais de 10s, destrava
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("AI Timeout")), 10000)
-        );
-
         const history = await fetchHistoricalData('MATICUSDT', '1', 50);
 
         if (history.length > 0) {
-          // Promise race entre a análise e o timeout
-          const aiResult = await Promise.race([
-            analyzePerformance(mockAssets, mockTransactions),
-            timeoutPromise
-          ]) as any;
+          // Wrapped Promise Race with Cleanup
+          let timeoutHandle: any;
 
-          setAnalysis(aiResult);
+          const timeoutPromise = new Promise((_, reject) => {
+            timeoutHandle = setTimeout(() => reject(new Error("AI Timeout")), 10000);
+          });
+
+          try {
+            const aiResult = await Promise.race([
+              analyzePerformance(mockAssets, mockTransactions).finally(() => clearTimeout(timeoutHandle)),
+              timeoutPromise
+            ]) as any;
+
+            setAnalysis(aiResult);
+          } catch (raceError) {
+            throw raceError; // Re-throw to be caught by outer catch
+          }
         } else {
           console.warn("Market Data unavailable, skipping AI");
           setAnalysis({
