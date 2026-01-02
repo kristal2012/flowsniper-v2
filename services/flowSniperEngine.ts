@@ -5,6 +5,7 @@ import { fetchCurrentPrice } from './marketDataService';
 export class FlowSniperEngine {
     private active: boolean = false;
     private onLog: (step: FlowStep) => void;
+    private onGasUpdate?: (bal: number) => void;
     private dailyPnl: number = 0;
     private maxDrawdown: number = -5; // 5% limit
     private tradeLimit: number = 3; // $3 max per trade
@@ -12,17 +13,28 @@ export class FlowSniperEngine {
     private gasBalance: number = 0;
     private aiAnalysis: any = null;
 
-    constructor(onLog: (step: FlowStep) => void) {
+    constructor(onLog: (step: FlowStep) => void, onGasUpdate?: (bal: number) => void) {
         this.onLog = onLog;
+        this.onGasUpdate = onGasUpdate;
     }
 
     start(mode: 'REAL' | 'DEMO', gas: number = 0, analysis: any = null) {
+        if (this.active) {
+            this.updateContext(gas, analysis);
+            this.runMode = mode;
+            return;
+        }
         this.active = true;
         this.runMode = mode;
         this.gasBalance = gas;
         this.aiAnalysis = analysis;
         console.log("ENGINE STARTED IN MODE:", mode, "GAS:", gas, "AI:", analysis?.action);
         this.run();
+    }
+
+    updateContext(gas: number, analysis: any) {
+        this.gasBalance = gas;
+        this.aiAnalysis = analysis;
     }
 
     stop() {
@@ -65,6 +77,7 @@ export class FlowSniperEngine {
                 const gasCost = 0.005 + (Math.random() * 0.01);
                 if (this.runMode === 'DEMO') {
                     this.gasBalance -= gasCost;
+                    if (this.onGasUpdate) this.onGasUpdate(this.gasBalance);
                 }
 
                 // Simulate decision making

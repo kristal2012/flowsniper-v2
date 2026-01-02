@@ -102,30 +102,35 @@ const App: React.FC = () => {
 
   // --- LOGIC MERGE: Real Engine Initialization ---
   useEffect(() => {
-    sniperRef.current = new FlowSniperEngine((newStep: FlowStep) => {
-      // Map FlowStep to SniperStep for the new UI
-      const mappedStep: SniperStep = {
-        id: newStep.id,
-        timestamp: newStep.timestamp,
-        path: newStep.pair.split('/'), // e.g. "WMATIC/USDC" -> ["WMATIC", "USDC"]
-        profit: newStep.profit,
-        status: newStep.status === 'SUCCESS' ? 'SUCCESS' : 'EXPIRED',
-        hash: newStep.hash
-      };
+    sniperRef.current = new FlowSniperEngine(
+      (newStep: FlowStep) => {
+        // Map FlowStep to SniperStep for the new UI
+        const mappedStep: SniperStep = {
+          id: newStep.id,
+          timestamp: newStep.timestamp,
+          path: newStep.pair.split('/'), // e.g. "WMATIC/USDC" -> ["WMATIC", "USDC"]
+          profit: newStep.profit,
+          status: newStep.status === 'SUCCESS' ? 'SUCCESS' : 'EXPIRED',
+          hash: newStep.hash
+        };
 
-      setSniperLogs(prev => [mappedStep, ...prev].slice(0, 15));
+        setSniperLogs(prev => [mappedStep, ...prev].slice(0, 15));
 
-      if (newStep.profit > 0) {
-        setDailyProfit(prev => prev + newStep.profit);
-      } else {
-        setDailyLoss(prev => prev + Math.abs(newStep.profit));
+        if (newStep.profit > 0) {
+          setDailyProfit(prev => prev + newStep.profit);
+        } else {
+          setDailyLoss(prev => prev + Math.abs(newStep.profit));
+        }
+      },
+      (newGas: number) => {
+        if (mode === 'DEMO') setDemoGasBalance(newGas);
       }
-    });
+    );
 
     return () => {
       if (sniperRef.current) sniperRef.current.stop();
     };
-  }, []);
+  }, [mode]);
 
   // --- LOGIC MERGE: Start/Stop Engine ---
   useEffect(() => {
@@ -134,7 +139,7 @@ const App: React.FC = () => {
     } else if (sniperRef.current) {
       sniperRef.current.stop();
     }
-  }, [botActive, mode]);
+  }, [botActive, mode, demoGasBalance, analysis]);
 
   // Auto-Derive Address from Private Key
   useEffect(() => {
