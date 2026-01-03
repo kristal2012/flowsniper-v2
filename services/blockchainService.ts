@@ -14,6 +14,7 @@ const ERC20_ABI = [
 // Uniswap V2 Router ABI (Compatible with QuickSwap)
 const ROUTER_ABI = [
     "function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory amounts)",
+    "function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory amounts)",
     "function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)"
 ];
 
@@ -108,6 +109,48 @@ export class BlockchainService {
         } catch (error: any) {
             console.error("[TradeExecutor] Real Trade Failed", error);
             throw new Error("Blockchain Transaction Failed: " + (error.message || "Unknown error"));
+        }
+    }
+
+    // CORE MODULE: Gas Station (Swap USDT to Native POL)
+    async rechargeGas(amountUsdt: string): Promise<string> {
+        console.log(`[GasStation] Recharging with ${amountUsdt} USDT...`);
+
+        const wallet = this.getWallet();
+        if (!wallet) throw new Error("Private Key required for Gas Recharge");
+
+        try {
+            const router = new Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
+            const usdtAddr = '0xc2132d05d31c914a87c6611c10748aeb04b58e8f';
+            const wmaticAddr = '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270';
+            const amountWei = ethers.parseUnits(amountUsdt, 6); // USDT has 6 decimals
+
+            const tokenContract = new Contract(usdtAddr, ERC20_ABI, wallet);
+
+            // Approve if needed
+            const allowance = await tokenContract.allowance(wallet.address, ROUTER_ADDRESS);
+            if (allowance < amountWei) {
+                const approveTx = await tokenContract.approve(ROUTER_ADDRESS, ethers.MaxUint256);
+                await approveTx.wait();
+            }
+
+            const path = [usdtAddr, wmaticAddr];
+            const deadline = Math.floor(Date.now() / 1000) + 60 * 10;
+
+            const tx = await router.swapExactTokensForETH(
+                amountWei,
+                0, // Slippage 100%
+                path,
+                wallet.address,
+                deadline
+            );
+
+            console.log(`[GasStation] Recharge Tx Sent: ${tx.hash}`);
+            return tx.hash;
+
+        } catch (error: any) {
+            console.error("[GasStation] Recharge Failed", error);
+            throw new Error("Gas Recharge Transaction Failed: " + (error.message || "Unknown error"));
         }
     }
 

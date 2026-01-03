@@ -110,6 +110,7 @@ const App: React.FC = () => {
   const [liquidityAction, setLiquidityAction] = useState<'add' | 'remove'>('add');
   const [liquidityAmount, setLiquidityAmount] = useState('');
   const [gasAmount, setGasAmount] = useState<string>('');
+  const [isRecharging, setIsRecharging] = useState(false);
   const [openAiKey, setOpenAiKey] = useState<string>(() => localStorage.getItem('flowsniper_openai_key') || '');
 
   // Persistir Chave AI
@@ -117,13 +118,25 @@ const App: React.FC = () => {
     localStorage.setItem('flowsniper_openai_key', openAiKey);
   }, [openAiKey]);
 
-  const rechargeGas = () => {
+  const rechargeGas = async () => {
+    if (!gasAmount || Number(gasAmount) <= 0) return;
+
     if (mode === 'DEMO') {
       setDemoGasBalance(prev => prev + Number(gasAmount));
       setGasAmount('');
       alert(`RECARGA SIMULADA DE ${gasAmount} POL CONFIRMADA!`);
     } else {
-      alert("Modo REAL: Recarga via contrato inteligente em breve.");
+      setIsRecharging(true);
+      try {
+        const txHash = await blockchainService.rechargeGas(gasAmount);
+        alert(`RECARGA INICIADA! TX: ${txHash}`);
+        setGasAmount('');
+        fetchRealBalances(); // Refresh balances
+      } catch (err: any) {
+        alert("Erro na Recarga: " + err.message);
+      } finally {
+        setIsRecharging(false);
+      }
     }
   };
 
@@ -680,15 +693,17 @@ const App: React.FC = () => {
                       type="number"
                       value={gasAmount}
                       onChange={(e) => setGasAmount(e.target.value)}
-                      className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-2xl p-5 font-mono text-3xl text-center outline-none focus:border-blue-500/50 transition-all"
+                      disabled={isRecharging}
+                      className={`w-full bg-[#0c0c0e] border border-zinc-800 rounded-2xl p-5 font-mono text-3xl text-center outline-none focus:border-blue-500/50 transition-all ${isRecharging ? 'opacity-50 cursor-not-allowed' : ''}`}
                       placeholder="0.00 POL"
                     />
                   </div>
                   <button
                     onClick={rechargeGas}
-                    className="w-full bg-blue-600 py-6 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-500 transition-all active:scale-95 shadow-2xl shadow-blue-500/20 border border-blue-400/20"
+                    disabled={isRecharging || !gasAmount}
+                    className={`w-full py-6 rounded-2xl font-black text-sm uppercase tracking-widest transition-all active:scale-95 shadow-2xl border ${isRecharging ? 'bg-zinc-800 text-zinc-500 border-zinc-700 cursor-wait' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-500/20 border-blue-400/20'}`}
                   >
-                    Recarregar Combustível
+                    {isRecharging ? 'Processando Recarga...' : 'Recarregar Combustível'}
                   </button>
                 </div>
               </div>
