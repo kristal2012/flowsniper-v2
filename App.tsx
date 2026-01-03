@@ -750,17 +750,18 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="space-y-3">
-                    <label className="text-xs font-bold uppercase tracking-widest text-zinc-400">Polygon RPC URL</label>
+                    <label className="text-xs font-bold uppercase tracking-widest text-zinc-400">Alchemy / Polygon RPC URL</label>
                     <div className="relative">
-                      <Activity className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600" size={18} />
+                      <Zap className="absolute left-6 top-1/2 -translate-y-1/2 text-[#f01a74]" size={18} />
                       <input
                         type="text"
                         value={rpcUrl}
                         onChange={(e) => setRpcUrl(e.target.value)}
-                        className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-2xl py-5 pl-14 pr-6 text-blue-400 font-mono text-sm outline-none focus:border-[#f01a74]/50 transition-all placeholder:text-zinc-800"
-                        placeholder="https://polygon-rpc.com"
+                        className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-2xl py-5 pl-14 pr-6 text-emerald-400 font-mono text-sm outline-none focus:border-[#f01a74]/50 transition-all placeholder:text-zinc-800"
+                        placeholder="https://polygon-mainnet.g.alchemy.com/v2/sua-chave"
                       />
                     </div>
+                    <p className="text-[10px] text-zinc-600 italic">* Use o Alchemy para execução ultra-rápida (Plano Free ou Pago).</p>
                   </div>
 
                   <button onClick={saveCredentials} className="px-10 py-5 bg-[#f01a74] rounded-2xl font-black text-xs uppercase tracking-widest text-white shadow-xl shadow-[#f01a74]/20 hover:bg-[#d01664] transition-all active:scale-95">
