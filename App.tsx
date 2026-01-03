@@ -36,10 +36,15 @@ import { mockManager, mockAssets, mockPerformance, mockTransactions } from './se
 import { analyzePerformance } from './services/openai';
 import { fetchHistoricalData, fetchCurrentPrice } from './services/marketDataService';
 import { FlowSniperEngine } from './services/flowSniperEngine';
+import { blockchainService } from './services/blockchainService';
 
 const App: React.FC = () => {
   // Estados de Controle
   const [manager, setManager] = useState<ManagerProfile>(mockManager);
+  const [activeTab, setActiveTab] = useState<'overview' | 'assets' | 'gas' | 'robots' | 'settings'>('overview');
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [botActive, setBotActive] = useState(false);
+  const [mode, setMode] = useState<'REAL' | 'DEMO'>('DEMO');
 
   // Load real address on mount
   useEffect(() => {
@@ -51,10 +56,33 @@ const App: React.FC = () => {
       } catch (e) { console.log("Invalid key in storage"); }
     }
   }, []);
-  const [activeTab, setActiveTab] = useState<'overview' | 'assets' | 'gas' | 'robots' | 'settings'>('overview');
-  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
-  const [botActive, setBotActive] = useState(false);
-  const [mode, setMode] = useState<'REAL' | 'DEMO'>('DEMO');
+
+  // Sync Real Balances
+  const [realUsdtBalance, setRealUsdtBalance] = useState<string>('0.00');
+  const [realPolBalance, setRealPolBalance] = useState<string>('0.00');
+
+  const fetchRealBalances = async () => {
+    if (mode === 'REAL' && manager.address) {
+      try {
+        const usdtAddr = '0xc2132d05d31c914a87c6611c10748aeb04b58e8f';
+        const polAddr = '0x0000000000000000000000000000000000000000';
+        const usdt = await blockchainService.getBalance(usdtAddr, manager.address);
+        const pol = await blockchainService.getBalance(polAddr, manager.address);
+        setRealUsdtBalance(Number(usdt).toFixed(2));
+        setRealPolBalance(Number(pol).toFixed(2));
+      } catch (err) {
+        console.error("Failed to fetch real balances", err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (mode === 'REAL') {
+      fetchRealBalances();
+      const interval = setInterval(fetchRealBalances, 30000); // 30s refresh
+      return () => clearInterval(interval);
+    }
+  }, [mode, manager.address]);
 
   // Credentials State
   const [privateKey, setPrivateKey] = useState(localStorage.getItem('fs_private_key') || '');
@@ -372,14 +400,14 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <SummaryCard
                   title="Capital Disponível"
-                  value={mode === 'DEMO' ? (demoBalance || 0).toFixed(2) : (manager.balance || "0.00")}
+                  value={mode === 'DEMO' ? (demoBalance || 0).toFixed(2) : realUsdtBalance}
                   unit={mode === 'DEMO' ? "USDT (DEMO)" : "USDT"}
                   onAdd={() => setActiveTab('assets')}
                   onRemove={() => setActiveTab('assets')}
                 />
                 <SummaryCard
                   title="Reserva Operacional"
-                  value={mode === 'DEMO' ? demoGasBalance.toFixed(2) : "--"}
+                  value={mode === 'DEMO' ? demoGasBalance.toFixed(2) : realPolBalance}
                   unit="POL"
                   onAdd={() => setActiveTab('gas')}
                   onRemove={() => setActiveTab('gas')}

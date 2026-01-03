@@ -1,6 +1,7 @@
 
 import { FlowStep, FlowOperation } from '../types';
 import { fetchCurrentPrice } from './marketDataService';
+import { blockchainService } from './blockchainService';
 
 export class FlowSniperEngine {
     private active: boolean = false;
@@ -45,6 +46,15 @@ export class FlowSniperEngine {
         const symbols = ['POLUSDT', 'BTCUSDT', 'ETHUSDT'];
         const dexes = ['Uniswap v3', 'QuickSwap', 'SushiSwap'];
 
+        // Token Addresses for Polygon
+        const TOKENS: { [key: string]: string } = {
+            'USDT': '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+            'POL': '0x0000000000000000000000000000000000000000', // Native
+            'WMATIC': '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270',
+            'WETH': '0x7ceb23fd6bc0ad59f6c078095c510c28342245c4',
+            'WBTC': '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6'
+        };
+
         while (this.active) {
             // Stop if drawdown hit
             if (this.dailyPnl <= this.maxDrawdown) {
@@ -86,6 +96,24 @@ export class FlowSniperEngine {
                     if (this.onGasUpdate) this.onGasUpdate(this.gasBalance);
                 }
 
+                // 3. EXECUTION LOGIC
+                // In REAL mode, we actually call the blockchainService
+                let txHash = this.runMode === 'DEMO'
+                    ? '0xSIM_' + Math.random().toString(16).substr(2, 10)
+                    : '';
+
+                if (this.runMode === 'REAL') {
+                    try {
+                        const tokenIn = TOKENS['USDT'];
+                        const tokenOut = TOKENS[randomSymbol.replace('USDT', '')] || TOKENS['WMATIC'];
+                        txHash = await blockchainService.executeTrade(tokenIn, tokenOut, "3.0", true);
+                    } catch (err) {
+                        console.error("Real Transaction Failed. Stopping Engine.", err);
+                        this.stop();
+                        break;
+                    }
+                }
+
                 // 3. CAPITAL EFFICIENCY (AI Recommendation: Optimize for assets like BTC/ETH)
                 let baseProfit = isSlippage
                     ? (Math.random() * 0.02 + 0.001)
@@ -106,7 +134,7 @@ export class FlowSniperEngine {
                     pair: `${randomSymbol.replace('USDT', '')}/USDT (${selectedDex})`,
                     profit: profit,
                     status: 'SUCCESS',
-                    hash: this.runMode === 'REAL' ? '0xTX_' + Math.random().toString(16).substr(2, 10) : '0xSIM_' + Math.random().toString(16).substr(2, 10)
+                    hash: txHash
                 };
 
                 this.onLog(step);

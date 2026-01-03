@@ -5,6 +5,7 @@ import { ethers, JsonRpcProvider, Wallet, Contract } from 'ethers';
 // Standard ERC20 ABI (Minimal)
 const ERC20_ABI = [
     "function balanceOf(address owner) view returns (uint256)",
+    "function allowance(address owner, address spender) view returns (uint256)",
     "function transfer(address to, uint256 amount) returns (bool)",
     "function approve(address spender, uint256 amount) returns (bool)",
     "event Transfer(address indexed from, address indexed to, uint256 amount)"
@@ -61,17 +62,32 @@ export class BlockchainService {
 
         try {
             const router = new Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
+
+            // Dynamic Decimals Detection
+            // USDT/USDC usually 6, others 18.
+            const isStable = tokenIn.toLowerCase() === '0xc2132d05d31c914a87c6611c10748aeb04b58e8f' || // USDT
+                tokenIn.toLowerCase() === '0x2791bca1f2de4661ed88a30c99a7a9449aa84174';   // USDC
+
+            const decimals = isStable ? 6 : 18;
+            const amountWei = ethers.parseUnits(amountIn, decimals);
+
             const tokenContract = new Contract(tokenIn, ERC20_ABI, wallet);
 
-            // 1. Approve
-            const amountWei = ethers.parseUnits(amountIn, 18); // Assuming 18 decimals for simplicity
-            console.log(`[TradeExecutor] Approving Router...`);
-            const approveTx = await tokenContract.approve(ROUTER_ADDRESS, amountWei);
-            await approveTx.wait();
+            // 1. Check & Approve if needed
+            console.log(`[TradeExecutor] Checking/Approving Router...`);
+            const allowance = await tokenContract.allowance(wallet.address, ROUTER_ADDRESS);
+
+            if (allowance < amountWei) {
+                const approveTx = await tokenContract.approve(ROUTER_ADDRESS, ethers.MaxUint256);
+                await approveTx.wait();
+            }
 
             // 2. Swap
             const path = [tokenIn, tokenOut];
             const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 mins
+
+            // Gas estimation for transparency
+            const gasPrice = (await this.getProvider().getFeeData()).gasPrice || ethers.parseUnits('50', 'gwei');
 
             console.log(`[TradeExecutor] Sending Swap Tx...`);
             const tx = await router.swapExactTokensForTokens(
@@ -79,7 +95,11 @@ export class BlockchainService {
                 0, // Slippage 100% allowed (Sniper Mode - Dangerous but fast)
                 path,
                 wallet.address,
-                deadline
+                deadline,
+                {
+                    gasLimit: 300000, // Standard swap gas limit
+                    gasPrice: gasPrice * 12n / 10n // 20% bump for speed
+                }
             );
 
             console.log(`[TradeExecutor] Tx Sent: ${tx.hash}`);
