@@ -7,34 +7,39 @@ export class FlowSniperEngine {
     private active: boolean = false;
     private onLog: (step: FlowStep) => void;
     private onGasUpdate?: (bal: number) => void;
+    private onBalanceUpdate?: (bal: number) => void;
     private dailyPnl: number = 0;
     private maxDrawdown: number = -5; // 5% limit
     private tradeLimit: number = 3; // $3 max per trade
     private runMode: 'REAL' | 'DEMO' = 'DEMO'; // Default
     private gasBalance: number = 0;
+    private totalBalance: number = 0;
     private aiAnalysis: any = null;
 
-    constructor(onLog: (step: FlowStep) => void, onGasUpdate?: (bal: number) => void) {
+    constructor(onLog: (step: FlowStep) => void, onGasUpdate?: (bal: number) => void, onBalanceUpdate?: (bal: number) => void) {
         this.onLog = onLog;
         this.onGasUpdate = onGasUpdate;
+        this.onBalanceUpdate = onBalanceUpdate;
     }
 
-    start(mode: 'REAL' | 'DEMO', gas: number = 0, analysis: any = null) {
+    start(mode: 'REAL' | 'DEMO', gas: number = 0, balance: number = 0, analysis: any = null) {
         if (this.active) {
-            this.updateContext(gas, analysis);
+            this.updateContext(gas, balance, analysis);
             this.runMode = mode;
             return;
         }
         this.active = true;
         this.runMode = mode;
         this.gasBalance = gas;
+        this.totalBalance = balance;
         this.aiAnalysis = analysis;
-        console.log("ENGINE STARTED IN MODE:", mode, "GAS:", gas, "AI:", analysis?.action);
+        console.log("ENGINE STARTED IN MODE:", mode, "GAS:", gas, "BAL:", balance, "AI:", analysis?.action);
         this.run();
     }
 
-    updateContext(gas: number, analysis: any) {
+    updateContext(gas: number, balance: number, analysis: any) {
         this.gasBalance = gas;
+        this.totalBalance = balance;
         this.aiAnalysis = analysis;
     }
 
@@ -126,6 +131,11 @@ export class FlowSniperEngine {
 
                 const profit = Number(baseProfit.toFixed(4));
                 this.dailyPnl += profit;
+
+                if (this.runMode === 'DEMO') {
+                    this.totalBalance += profit;
+                    if (this.onBalanceUpdate) this.onBalanceUpdate(this.totalBalance);
+                }
 
                 const step: FlowStep = {
                     id: Math.random().toString(36).substr(2, 9),

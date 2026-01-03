@@ -165,6 +165,9 @@ const App: React.FC = () => {
       },
       (newGas: number) => {
         if (mode === 'DEMO') setDemoGasBalance(newGas);
+      },
+      (newBal: number) => {
+        if (mode === 'DEMO') setDemoBalance(newBal);
       }
     );
 
@@ -176,11 +179,11 @@ const App: React.FC = () => {
   // --- LOGIC MERGE: Start/Stop Engine ---
   useEffect(() => {
     if (botActive && sniperRef.current) {
-      sniperRef.current.start(mode, demoGasBalance, analysis);
+      sniperRef.current.start(mode, demoGasBalance, demoBalance, analysis);
     } else if (sniperRef.current) {
       sniperRef.current.stop();
     }
-  }, [botActive, mode, demoGasBalance, analysis]);
+  }, [botActive, mode, demoGasBalance, demoBalance, analysis]);
 
   // Auto-Derive Address from Private Key
   useEffect(() => {
