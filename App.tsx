@@ -67,6 +67,7 @@ const App: React.FC = () => {
   const [realUsdtBalance, setRealUsdtBalance] = useState<string>('0.00');
   const [realPolBalance, setRealPolBalance] = useState<string>('0.00');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [pvtKeyError, setPvtKeyError] = useState<string | null>(null);
 
   const fetchRealBalances = async () => {
     if (mode === 'REAL' && manager.address) {
@@ -241,14 +242,25 @@ const App: React.FC = () => {
 
   // Save Credentials
   const saveCredentials = () => {
+    setPvtKeyError(null);
+    if (!privateKey) return;
+
+    // Validation: Check if user pasted an address (Starts with 0x and has 42 chars)
+    if (privateKey.length === 42 && privateKey.startsWith('0x')) {
+      setPvtKeyError("Erro: Você colou o ENDEREÇO da carteira. Para snipar, o robô precisa da CHAVE PRIVADA (Private Key) para assinar transações!");
+      return;
+    }
+
     if (privateKey) {
-      localStorage.setItem('fs_private_key', privateKey);
       try {
         const w = new EthersWallet(privateKey);
+        localStorage.setItem('fs_private_key', privateKey);
         setManager(prev => ({ ...prev, address: w.address }));
         console.log("Derived address from PK:", w.address);
       } catch (e) {
         console.error("Failed to derive address from PK", e);
+        setPvtKeyError("Chave Privada Inválida. Verifique se copiou corretamente da MetaMask (Exportar Chave Privada).");
+        return;
       }
     }
     if (rpcUrl) localStorage.setItem('fs_polygon_rpc', rpcUrl);
@@ -331,7 +343,7 @@ const App: React.FC = () => {
       <aside className="w-72 border-r border-zinc-800/50 hidden md:flex flex-col p-6 sticky top-0 h-screen bg-[#0c0c0e]">
         <div className="flex items-center gap-3 mb-10">
           <div className="w-10 h-10 bg-[#f01a74] rounded-xl flex items-center justify-center font-bold text-white text-xl shadow-lg shadow-[#f01a74]/30">FS</div>
-          <span className="font-bold text-2xl tracking-tighter bg-gradient-to-r from-white to-zinc-500 bg-clip-text text-transparent italic">FLOWSNIPER <span className="text-[10px] text-emerald-500 non-italic border border-emerald-500/20 px-1 rounded">v4.0 AI</span></span>
+          <span className="font-bold text-2xl tracking-tighter bg-gradient-to-r from-white to-zinc-500 bg-clip-text text-transparent italic">FLOWSNIPER <span className="text-[10px] text-emerald-500 non-italic border border-emerald-500/20 px-1 rounded">v4.1.2 Sync Fix</span></span>
         </div>
 
         {/* Account Info Card */}
@@ -766,11 +778,16 @@ const App: React.FC = () => {
                       <input
                         type="password"
                         value={privateKey}
-                        onChange={(e) => setPrivateKey(e.target.value)}
-                        className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-2xl py-5 pl-14 pr-6 text-emerald-500 font-mono text-sm outline-none focus:border-[#f01a74]/50 transition-all placeholder:text-zinc-800"
-                        placeholder="0x..."
+                        onChange={(e) => { setPrivateKey(e.target.value); setPvtKeyError(null); }}
+                        className={`w-full bg-[#0c0c0e] border ${pvtKeyError ? 'border-rose-500/50' : 'border-zinc-800'} rounded-2xl py-5 pl-14 pr-6 text-emerald-500 font-mono text-sm outline-none focus:border-[#f01a74]/50 transition-all placeholder:text-zinc-800`}
+                        placeholder="0x... (CHAVE PRIVADA)"
                       />
                     </div>
+                    {pvtKeyError && (
+                      <p className="text-[11px] text-rose-500 font-bold bg-rose-500/10 p-4 rounded-xl border border-rose-500/20 animate-in fade-in slide-in-from-top-2 duration-300">
+                        {pvtKeyError}
+                      </p>
+                    )}
                     <p className="text-[10px] text-zinc-600 italic">Nunca compartilhe sua chave privada. Ela é usada para assinar transações no modo REAL.</p>
                   </div>
 
