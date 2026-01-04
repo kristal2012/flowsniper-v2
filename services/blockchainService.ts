@@ -173,13 +173,23 @@ export class BlockchainService {
     async getBalance(tokenAddress: string, accountAddress: string): Promise<string> {
         try {
             const provider = this.getProvider();
+
+            // Native POL (Matic)
             if (tokenAddress === '0x0000000000000000000000000000000000000000') {
                 const balance = await provider.getBalance(accountAddress);
                 return ethers.formatEther(balance);
             }
+
+            // ERC20 Tokens
             const contract = new Contract(tokenAddress, ERC20_ABI, provider);
             const balance = await contract.balanceOf(accountAddress);
-            return ethers.formatUnits(balance, 18);
+
+            // USDT / USDC on Polygon use 6 decimals
+            const isStable = tokenAddress.toLowerCase() === '0xc2132d05d31c914a87c6611c10748aeb04b58e8f' || // USDT
+                tokenAddress.toLowerCase() === '0x2791bca1f2de4661ed88a30c99a7a9449aa84174';   // USDC
+
+            const decimals = isStable ? 6 : 18;
+            return ethers.formatUnits(balance, decimals);
         } catch (error) {
             console.error("Blockchain Balance Error:", error);
             return '0';
