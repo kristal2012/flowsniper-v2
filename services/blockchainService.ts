@@ -21,7 +21,12 @@ const ROUTER_ABI = [
 // QuickSwap Router Address (Polygon)
 const ROUTER_ADDRESS = "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff";
 
-const DEFAULT_RPC = 'https://polygon-rpc.com';
+const DEFAULT_RPC = 'https://polygon-mainnet.g.alchemy.com/v2/iRsg1SsPMDZZ9s5kHsRbH'; // User Alchemy RPC
+const FALLBACK_RPCS = [
+    'https://polygon-rpc.com',
+    'https://rpc-mainnet.maticvigil.com',
+    'https://1rpc.io/matic'
+];
 
 export class BlockchainService {
     private getRPC(): string {
@@ -29,7 +34,13 @@ export class BlockchainService {
     }
 
     private getProvider(): JsonRpcProvider {
-        return new JsonRpcProvider(this.getRPC());
+        const rpc = this.getRPC();
+        try {
+            return new JsonRpcProvider(rpc, undefined, { staticNetwork: true });
+        } catch (e) {
+            console.warn("[BlockchainService] Primary RPC failed, using fallback:", FALLBACK_RPCS[0]);
+            return new JsonRpcProvider(FALLBACK_RPCS[0], undefined, { staticNetwork: true });
+        }
     }
 
     private getWallet(): Wallet | null {
@@ -171,27 +182,33 @@ export class BlockchainService {
     }
 
     async getBalance(tokenAddress: string, accountAddress: string): Promise<string> {
+        if (!accountAddress || accountAddress === '0x0000000000000000000000000000000000000000') return '0';
+
         try {
             const provider = this.getProvider();
+            const normalizedAddress = ethers.getAddress(accountAddress);
 
             // Native POL (Matic)
             if (tokenAddress === '0x0000000000000000000000000000000000000000') {
-                const balance = await provider.getBalance(accountAddress);
+                const balance = await provider.getBalance(normalizedAddress);
                 return ethers.formatEther(balance);
             }
 
             // ERC20 Tokens
-            const contract = new Contract(tokenAddress, ERC20_ABI, provider);
-            const balance = await contract.balanceOf(accountAddress);
+            const normalizedToken = ethers.getAddress(tokenAddress);
+            const contract = new Contract(normalizedToken, ERC20_ABI, provider);
+            const balance = await contract.balanceOf(normalizedAddress);
 
             // USDT / USDC on Polygon use 6 decimals
-            const isStable = tokenAddress.toLowerCase() === '0xc2132d05d31c914a87c6611c10748aeb04b58e8f' || // USDT
-                tokenAddress.toLowerCase() === '0x2791bca1f2de4661ed88a30c99a7a9449aa84174';   // USDC
+            const isStable = normalizedToken === ethers.getAddress('0xc2132d05d31c914a87c6611c10748aeb04b58e8f') || // USDT
+                normalizedToken === ethers.getAddress('0x2791bca1f2de4661ed88a30c99a7a9449aa84174');   // USDC
 
             const decimals = isStable ? 6 : 18;
-            return ethers.formatUnits(balance, decimals);
-        } catch (error) {
-            console.error("Blockchain Balance Error:", error);
+            const formatted = ethers.formatUnits(balance, decimals);
+            console.log(`[BlockchainService] Balance for ${normalizedToken}: ${formatted}`);
+            return formatted;
+        } catch (error: any) {
+            console.error("[BlockchainService] Balance Error:", error.message || error);
             return '0';
         }
     }

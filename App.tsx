@@ -64,23 +64,36 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Sync Real Balances
   const [realUsdtBalance, setRealUsdtBalance] = useState<string>('0.00');
   const [realPolBalance, setRealPolBalance] = useState<string>('0.00');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const fetchRealBalances = async () => {
-    console.log("[BalanceDebug] Mode:", mode, "Address:", manager.address);
     if (mode === 'REAL' && manager.address) {
+      // Check if it's the mock address
+      if (manager.address === mockManager.address) {
+        console.warn("[BalanceDebug] Using mock address in REAL mode. balance will be 0.");
+        return;
+      }
+
+      setIsSyncing(true);
+      console.log("[BalanceDebug] Fetching for:", manager.address);
       try {
         const usdtAddr = '0xc2132d05d31c914a87c6611c10748aeb04b58e8f';
         const polAddr = '0x0000000000000000000000000000000000000000';
-        const usdt = await blockchainService.getBalance(usdtAddr, manager.address);
-        const pol = await blockchainService.getBalance(polAddr, manager.address);
-        console.log("[BalanceDebug] USDT:", usdt, "POL:", pol);
+
+        const [usdt, pol] = await Promise.all([
+          blockchainService.getBalance(usdtAddr, manager.address),
+          blockchainService.getBalance(polAddr, manager.address)
+        ]);
+
+        console.log("[BalanceDebug] Result - USDT:", usdt, "POL:", pol);
         setRealUsdtBalance(Number(usdt).toFixed(2));
         setRealPolBalance(Number(pol).toFixed(2));
       } catch (err) {
-        console.error("[BalanceDebug] Error:", err);
+        console.error("[BalanceDebug] Connection Error:", err);
+      } finally {
+        setIsSyncing(false);
       }
     }
   };
@@ -390,6 +403,18 @@ const App: React.FC = () => {
           {/* TAB: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-8 animate-in fade-in duration-500">
+              {/* Warning: Real mode with Mock Address */}
+              {mode === 'REAL' && manager.address === mockManager.address && (
+                <div className="bg-rose-500/10 border border-rose-500/30 p-6 rounded-[2rem] flex items-center gap-6 animate-pulse">
+                  <div className="w-12 h-12 bg-rose-500/20 rounded-xl flex items-center justify-center border border-rose-500/30">
+                    <ShieldCheck size={24} className="text-rose-500" />
+                  </div>
+                  <div>
+                    <h4 className="text-rose-500 font-black italic uppercase tracking-tighter">Atenção: Carteira não configurada</h4>
+                    <p className="text-zinc-400 text-xs font-medium">Você está no modo <span className="text-rose-500 font-bold">REAL</span>, mas ainda não salvou sua Chave Privada em Configurações. O saldo refletido é zero.</p>
+                  </div>
+                </div>
+              )}
               {/* --- LOGIC MERGE: AI WIDGET --- */}
               {analysis ? (
                 <div className="bg-[#141417] rounded-[2rem] border border-zinc-800/50 p-6 md:p-8 animate-in fade-in duration-700 shadow-2xl relative overflow-hidden">
@@ -437,17 +462,19 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <SummaryCard
                   title="Capital Disponível"
-                  value={mode === 'DEMO' ? (demoBalance || 0).toFixed(2) : realUsdtBalance}
+                  value={mode === 'DEMO' ? (demoBalance || 0).toFixed(2) : (isSyncing && realUsdtBalance === '0.00' ? '...' : realUsdtBalance)}
                   unit={mode === 'DEMO' ? "USDT (DEMO)" : "USDT"}
                   onAdd={() => setActiveTab('assets')}
                   onRemove={() => setActiveTab('assets')}
+                  isLoading={isSyncing && realUsdtBalance === '0.00'}
                 />
                 <SummaryCard
                   title="Reserva Operacional"
-                  value={mode === 'DEMO' ? demoGasBalance.toFixed(2) : realPolBalance}
+                  value={mode === 'DEMO' ? demoGasBalance.toFixed(2) : (isSyncing && realPolBalance === '0.00' ? '...' : realPolBalance)}
                   unit="POL"
                   onAdd={() => setActiveTab('gas')}
                   onRemove={() => setActiveTab('gas')}
+                  isLoading={isSyncing && realPolBalance === '0.00'}
                 />
               </div>
 
@@ -801,11 +828,13 @@ const App: React.FC = () => {
 };
 
 // COMPONENTES DE INTERFACE PERSONALIZADOS
-const SummaryCard: React.FC<{ title: string; value: string; unit: string; onAdd: () => void; onRemove: () => void }> = ({ title, value, unit, onAdd, onRemove }) => (
+const SummaryCard: React.FC<{ title: string; value: string; unit: string; onAdd: () => void; onRemove: () => void; isLoading?: boolean }> = ({ title, value, unit, onAdd, onRemove, isLoading }) => (
   <div className="bg-[#141417] rounded-[2.5rem] border border-zinc-800/50 p-10 shadow-2xl hover:border-[#f01a74]/30 transition-all group overflow-hidden relative">
     <div className="absolute inset-0 bg-gradient-to-br from-[#f01a74]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
     <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mb-4 relative z-10">{title}</p>
-    <h2 className="text-5xl font-black mb-10 font-mono tracking-tighter relative z-10">{value} <span className="text-zinc-700 text-2xl uppercase font-sans">{unit}</span></h2>
+    <h2 className={`text-5xl font-black mb-10 font-mono tracking-tighter relative z-10 ${isLoading ? 'animate-pulse text-zinc-600' : ''}`}>
+      {value} <span className="text-zinc-700 text-2xl uppercase font-sans">{unit}</span>
+    </h2>
     <div className="grid grid-cols-2 gap-4 relative z-10">
       <button onClick={onAdd} className="flex items-center justify-center gap-2 bg-zinc-800/40 hover:bg-zinc-800 border border-zinc-800/50 rounded-2xl py-3 text-[10px] font-black uppercase transition-all active:scale-95"><Plus size={14} /> Aporte</button>
       <button onClick={onRemove} className="flex items-center justify-center gap-2 bg-zinc-800/40 hover:bg-zinc-800 border border-zinc-800/50 rounded-2xl py-3 text-[10px] font-black uppercase transition-all active:scale-95"><Minus size={14} /> Resgate</button>
