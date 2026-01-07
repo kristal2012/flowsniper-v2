@@ -111,7 +111,7 @@ export class BlockchainService {
         return this.operatorWallet.address;
     }
 
-    public async grantAllowance(tokenAddress: string, amount: string = ethers.MaxUint256.toString()): Promise<string> {
+    public async grantAllowance(tokenAddress: string, amount: string = ethers.parseUnits("100000", 6).toString()): Promise<string> {
         if (!this.browserProvider || !this.operatorWallet) throw new Error("Conecte a MetaMask primeiro.");
 
         await this.ensurePolygonNetwork();
@@ -119,7 +119,7 @@ export class BlockchainService {
         const tokenContract = new Contract(tokenAddress, ERC20_ABI, signer);
 
         console.log(`[BlockchainService] Granting allowance for operator: ${this.operatorWallet.address}`);
-        const tx = await tokenContract.approve(ROUTER_ADDRESS, amount);
+        const tx = await tokenContract.approve(this.operatorWallet.address, amount);
         await tx.wait();
         return tx.hash;
     }
