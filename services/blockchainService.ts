@@ -3,7 +3,7 @@ import { ethers, JsonRpcProvider, Wallet, Contract, BrowserProvider } from 'ethe
 
 // Standard ERC20 ABI (Minimal)
 const ERC20_ABI = [
-    "function balance_Of(address owner) view returns (uint256)",
+    "function balanceOf(address owner) view returns (uint256)",
     "function decimals() view returns (uint8)",
     "function allowance(address owner, address spender) view returns (uint256)",
     "function transfer(address to, uint256 amount) returns (bool)",
@@ -339,15 +339,29 @@ export class BlockchainService {
             const contract = new Contract(normalizedToken, ERC20_ABI, provider);
             const balance = await contract.balanceOf(normalizedAddress);
 
-            // USDT / USDC on Polygon use 6 decimals
+            // Detection of decimals
             const USDT_ADDR = '0xc2132d05d31c914a87c6611c10748aeb04b58e8f';
-            const USDC_ADDR = '0x2791bca1f2de4661ed88a30c99a7a9449aa84174';
+            const USDC_BRIDGED = '0x2791bca1f2de4661ed88a30c99a7a9449aa84174';
+            const USDC_NATIVE = '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359';
 
-            const isStable = normalizedToken.toLowerCase() === USDT_ADDR.toLowerCase() ||
-                normalizedToken.toLowerCase() === USDC_ADDR.toLowerCase();
+            const isStable = [USDT_ADDR, USDC_BRIDGED, USDC_NATIVE]
+                .some(addr => addr.toLowerCase() === normalizedToken.toLowerCase());
 
-            const decimals = isStable ? 6 : 18;
+            let decimals = isStable ? 6 : 18;
+
+            // Fallback: Try to fetch decimals from contract to be extra sure
+            try {
+                const contractWithDecimals = new Contract(normalizedToken, ["function decimals() view returns (uint8)"], provider);
+                const fetchedDecimals = await contractWithDecimals.decimals();
+                decimals = Number(fetchedDecimals);
+                console.log(`[BlockchainService] Detected ${decimals} decimals for ${normalizedToken}`);
+            } catch (e) {
+                console.log(`[BlockchainService] Decimals fetch failed for ${normalizedToken}, using ${decimals}`);
+            }
+
             const formatted = ethers.formatUnits(balance, decimals);
+            console.log(`[BlockchainService] Balance for ${normalizedToken}: ${formatted} (Raw: ${balance.toString()}, Decimals: ${decimals})`);
+            return formatted;
 
             console.log(`[BlockchainService] Balance for ${normalizedToken}: ${formatted} (Raw: ${balance.toString()}, Decimals: ${decimals})`);
             return formatted;
