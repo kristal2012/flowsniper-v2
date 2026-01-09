@@ -100,8 +100,23 @@ const App: React.FC = () => {
           opUsdt = await blockchainService.getBalance(usdtAddr, opAddr).catch(e => '0.00');
         }
 
-        console.log("[BalanceDebug] Final Selection - Capital:", usdt, "Gas:", pol, "OpGas:", opPol);
-        setRealUsdtBalance(Number(usdt).toFixed(2));
+        // Expanded Discovery for other assets
+        const otherTokens = [
+          { name: 'WETH', addr: '0x7ceb23fd6bc0ad59f6c078095c510c28342245c4' },
+          { name: 'WBTC', addr: '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6' },
+          { name: 'AAVE', addr: '0xd6df30500db6e36d4336069904944f2b93652618' },
+          { name: 'UNI', addr: '0xb33EaAd8d922B1083446DC23f610c2567fB5180f' }
+        ];
+
+        let portfolioValue = 0;
+        for (const t of otherTokens) {
+          const bal = await blockchainService.getBalance(t.addr, manager.address).catch(e => '0');
+          const price = await fetchCurrentPrice(t.name + 'USDT').catch(e => 0);
+          portfolioValue += Number(bal) * price;
+        }
+
+        console.log("[BalanceDebug] Final Selection - Capital:", usdt, "Gas:", pol, "Portfolio:", portfolioValue);
+        setRealUsdtBalance((Number(usdt) + portfolioValue).toFixed(2)); // Show total value including assets
         setRealPolBalance(Number(pol).toFixed(2));
         setOperatorPolBalance(Number(opPol).toFixed(2));
         setOperatorUsdtBalance(Number(opUsdt).toFixed(2));
@@ -741,7 +756,7 @@ const App: React.FC = () => {
                             <>
                               <div className="flex flex-col items-end">
                                 <span className={`font-black text-base tracking-tighter ${log.profit < 0 ? 'text-rose-500' : 'text-white'}`}>
-                                  {log.profit > 0 ? '+' : ''}{log.profit.toFixed(4)} <span className="text-[10px] text-zinc-600">POL</span>
+                                  {log.profit > 0 ? '+' : ''}{log.profit.toFixed(4)} <span className="text-[10px] text-zinc-600">USDT</span>
                                 </span>
                                 <span className="text-[9px] text-zinc-600 uppercase font-bold tracking-widest mt-1 group-hover:text-zinc-400 transition-colors">Ver no PolygonScan</span>
                               </div>

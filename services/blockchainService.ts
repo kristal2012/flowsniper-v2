@@ -143,6 +143,11 @@ export class BlockchainService {
         }
     }
 
+    public getWalletAddress(): string | null {
+        const wallet = this.getWallet();
+        return wallet ? wallet.address : null;
+    }
+
     private getWallet(): Wallet | null {
         // Prioritize Operator Wallet
         if (this.operatorWallet) {

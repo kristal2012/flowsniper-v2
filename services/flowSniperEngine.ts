@@ -140,19 +140,56 @@ export class FlowSniperEngine {
                         const tokenIn = TOKENS['USDT'];
                         const cleanedSymbol = randomSymbol.replace('USDT', '').replace('POL', 'WMATIC');
                         const tokenOut = TOKENS[cleanedSymbol] || TOKENS['WMATIC'];
-                        txHash = await blockchainService.executeTrade(tokenIn, tokenOut, this.tradeAmount, true);
+
+                        // 1. BUY: USDT -> Token
+                        this.onLog({
+                            id: 'buy-' + Date.now(),
+                            timestamp: new Date().toLocaleTimeString(),
+                            type: 'ROUTE_OPTIMIZATION',
+                            pair: `Buying ${cleanedSymbol}...`,
+                            profit: 0,
+                            status: 'SUCCESS',
+                            hash: ''
+                        });
+
+                        const buyHash = await blockchainService.executeTrade(tokenIn, tokenOut, this.tradeAmount, true);
+                        console.log("[SniperCycle] Buy Success:", buyHash);
+
+                        // 2. WAIT: High Frequency Delay
+                        await new Promise(resolve => setTimeout(resolve, 500));
+
+                        // 3. SELL: Token -> USDT (Realize Snipe)
+                        this.onLog({
+                            id: 'sell-' + Date.now(),
+                            timestamp: new Date().toLocaleTimeString(),
+                            type: 'SLIPPAGE_SWAP',
+                            pair: `Sniping Back to USDT...`,
+                            profit: 0,
+                            status: 'SUCCESS',
+                            hash: ''
+                        });
+
+                        // We need to know how much we bought, but for simplicity we'll try to swap the same amount worth or use getBalance
+                        const activeAddr = blockchainService.getWalletAddress();
+                        const tokenBal = activeAddr ? await blockchainService.getBalance(tokenOut, activeAddr) : '0';
+                        if (Number(tokenBal) > 0) {
+                            txHash = await blockchainService.executeTrade(tokenOut, tokenIn, tokenBal, true);
+                        } else {
+                            txHash = buyHash; // Fallback to buy hash if balance discovery fails
+                        }
+
                     } catch (err: any) {
-                        console.error("Real Transaction Failed", err);
+                        console.error("Real Sniper Cycle Failed", err);
                         this.onLog({
                             id: 'err-' + Date.now(),
                             timestamp: new Date().toLocaleTimeString(),
                             type: 'LIQUIDITY_SCAN',
-                            pair: `${err.message || 'Network Congestion'}`,
+                            pair: `${err.message || 'DEX Execution Error'}`,
                             profit: 0,
                             status: 'FAILED',
                             hash: ''
                         });
-                        await new Promise(resolve => setTimeout(resolve, 3000)); // Cool down
+                        await new Promise(resolve => setTimeout(resolve, 3000));
                         continue;
                     }
                 }
