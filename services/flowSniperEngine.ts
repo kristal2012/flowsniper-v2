@@ -57,7 +57,7 @@ export class FlowSniperEngine {
         // Token Addresses for Polygon
         const TOKENS: { [key: string]: string } = {
             'USDT': '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
-            'POL': '0x0000000000000000000000000000000000000000', // Native
+            'POL': '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270', // Use WMATIC for Swaps
             'WMATIC': '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270',
             'WETH': '0x7ceb23fd6bc0ad59f6c078095c510c28342245c4',
             'WBTC': '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6',
@@ -138,12 +138,22 @@ export class FlowSniperEngine {
                 if (this.runMode === 'REAL') {
                     try {
                         const tokenIn = TOKENS['USDT'];
-                        const tokenOut = TOKENS[randomSymbol.replace('USDT', '')] || TOKENS['WMATIC'];
+                        const cleanedSymbol = randomSymbol.replace('USDT', '').replace('POL', 'WMATIC');
+                        const tokenOut = TOKENS[cleanedSymbol] || TOKENS['WMATIC'];
                         txHash = await blockchainService.executeTrade(tokenIn, tokenOut, this.tradeAmount, true);
-                    } catch (err) {
-                        console.error("Real Transaction Failed. Stopping Engine.", err);
-                        this.stop();
-                        break;
+                    } catch (err: any) {
+                        console.error("Real Transaction Failed", err);
+                        this.onLog({
+                            id: 'err-' + Date.now(),
+                            timestamp: new Date().toLocaleTimeString(),
+                            type: 'LIQUIDITY_SCAN',
+                            pair: `Blocked: ${err.message?.split(':')[0] || 'Network Congestion'}`,
+                            profit: 0,
+                            status: 'FAILED',
+                            hash: ''
+                        });
+                        await new Promise(resolve => setTimeout(resolve, 3000)); // Cool down
+                        continue;
                     }
                 }
 
