@@ -56,7 +56,8 @@ export type FlowOperation =
   | 'SANDWICH_DETECTION'
   | 'CROSS_DEX_LIQUIDITY'
   | 'ROUTE_OPTIMIZATION'
-  | 'LIQUIDITY_SCAN';
+  | 'LIQUIDITY_SCAN'
+  | 'SCAN_PULSE';
 
 export const SUPPORTED_PAIRS = [
   'POL/USDT',

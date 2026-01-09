@@ -190,21 +190,34 @@ const App: React.FC = () => {
   useEffect(() => {
     sniperRef.current = new FlowSniperEngine(
       (newStep: FlowStep) => {
-        // Map FlowStep to SniperStep for the new UI
+        // High Speed Filtering: We keep only real successes OR a limited number of pulses
+        if (newStep.type === 'SCAN_PULSE') {
+          // We can use a separate state if we want to show "Active Scanning" in a corner
+          return;
+        }
+
+        // Map FlowStep to SniperStep for the UI
         const mappedStep: SniperStep = {
           id: newStep.id,
           timestamp: newStep.timestamp,
-          path: newStep.pair.split('/'), // e.g. "WMATIC/USDC" -> ["WMATIC", "USDC"]
+          path: newStep.pair.includes('/') ? newStep.pair.split('/') : [newStep.pair],
           profit: newStep.profit,
           status: newStep.status === 'SUCCESS' ? 'SUCCESS' : 'EXPIRED',
           hash: newStep.hash
         };
 
-        setSniperLogs(prev => [mappedStep, ...prev].slice(0, 15));
+        setSniperLogs(prev => {
+          // If it's a "pulse-miss" (liquidity scan without edge), we keep only 3 of them
+          if (newStep.status === 'FAILED') {
+            const filtered = prev.filter(l => l.status !== 'EXPIRED'); // Clear old misses
+            return [mappedStep, ...filtered].slice(0, 15);
+          }
+          return [mappedStep, ...prev].slice(0, 25);
+        });
 
         if (newStep.profit > 0) {
           setDailyProfit(prev => prev + newStep.profit);
-        } else {
+        } else if (newStep.profit < 0) {
           setDailyLoss(prev => prev + Math.abs(newStep.profit));
         }
       },
@@ -705,27 +718,36 @@ const App: React.FC = () => {
                     {sniperLogs.map((log) => (
                       <div
                         key={log.id}
-                        className={`group flex justify-between items-center p-5 rounded-[1.5rem] border transition-all duration-300 hover:scale-[1.02] ${log.profit < 0 ? 'bg-rose-500/5 border-rose-500/10' : 'bg-emerald-500/5 border-emerald-500/10 hover:border-emerald-500/30'}`}
+                        className={`group flex justify-between items-center p-5 rounded-[1.5rem] border transition-all duration-300 hover:scale-[1.01] ${log.status === 'EXPIRED' ? 'bg-zinc-800/10 border-zinc-800/20 opacity-60' : (log.profit < 0 ? 'bg-rose-500/5 border-rose-500/10' : 'bg-emerald-500/5 border-emerald-500/10 hover:border-emerald-500/30 shadow-[0_4px_20px_rgba(16,184,129,0.05)]')}`}
                       >
                         <div className="flex items-center gap-8">
                           <span className="text-zinc-600 text-[10px] w-20">{log.timestamp}</span>
                           <div className="flex flex-col">
-                            <span className={`font-black uppercase tracking-tighter text-sm ${log.profit < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                              {log.profit < 0 ? 'Cost Recapture' : 'Successful Snipe'}
+                            <span className={`font-black uppercase tracking-tighter text-sm ${log.status === 'EXPIRED' ? 'text-zinc-600' : (log.profit < 0 ? 'text-rose-500' : 'text-emerald-500')}`}>
+                              {log.status === 'EXPIRED' ? 'Scanning Network...' : (log.profit < 0 ? 'Cost Recapture' : 'Successful Snipe')}
                             </span>
                             <span className="text-zinc-500 text-[10px] mt-1 font-bold">{log.path.join(' → ')}</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-6">
-                          <div className="flex flex-col items-end">
-                            <span className={`font-black text-base tracking-tighter ${log.profit < 0 ? 'text-rose-500' : 'text-white'}`}>
-                              {log.profit > 0 ? '+' : ''}{log.profit.toFixed(4)} <span className="text-[10px] text-zinc-600">POL</span>
-                            </span>
-                            <span className="text-[9px] text-zinc-600 uppercase font-bold tracking-widest mt-1 group-hover:text-zinc-400 transition-colors">Ver no PolygonScan</span>
-                          </div>
-                          <a href={`https://polygonscan.com/tx/${log.hash}`} target="_blank" rel="noreferrer" className="p-3 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors border border-white/5">
-                            <ExternalLink size={16} className="text-zinc-500" />
-                          </a>
+                          {log.status !== 'EXPIRED' ? (
+                            <>
+                              <div className="flex flex-col items-end">
+                                <span className={`font-black text-base tracking-tighter ${log.profit < 0 ? 'text-rose-500' : 'text-white'}`}>
+                                  {log.profit > 0 ? '+' : ''}{log.profit.toFixed(4)} <span className="text-[10px] text-zinc-600">POL</span>
+                                </span>
+                                <span className="text-[9px] text-zinc-600 uppercase font-bold tracking-widest mt-1 group-hover:text-zinc-400 transition-colors">Ver no PolygonScan</span>
+                              </div>
+                              <a href={`https://polygonscan.com/tx/${log.hash}`} target="_blank" rel="noreferrer" className="p-3 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors border border-white/5">
+                                <ExternalLink size={16} className="text-zinc-500" />
+                              </a>
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-2 text-zinc-700">
+                              <span className="text-[10px] font-bold italic">Buscando Falha...</span>
+                              <Activity size={12} className="animate-pulse" />
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}

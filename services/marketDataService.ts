@@ -60,18 +60,20 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
         const response = await fetch(`${BYBIT_V5_URL}/tickers?category=linear&symbol=${symbol}`);
         const data = await response.json();
 
-        if (data.retCode !== 0) {
-            console.error("Bybit Price Detail Error:", data);
-            throw new Error(`Bybit API Error: ${data.retMsg}`);
+        if (data.retCode === 0 && data.result && data.result.list && data.result.list.length > 0) {
+            return parseFloat(data.result.list[0].lastPrice);
         }
-
-        if (!data.result || !data.result.list || data.result.list.length === 0) {
-            throw new Error(`Symbol ${symbol} not found or no data available.`);
-        }
-
-        return parseFloat(data.result.list[0].lastPrice);
+        throw new Error("Bybit price empty");
     } catch (error) {
-        console.error("Current Price Fetch Error:", error);
-        return 0;
+        console.warn(`[MarketData] Bybit price failed for ${symbol}, trying Binance fallback...`);
+        try {
+            const binanceUrl = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`;
+            const response = await fetch(binanceUrl);
+            const data = await response.json();
+            return parseFloat(data.price);
+        } catch (bError) {
+            console.error(`[MarketData] All price sources failed for ${symbol}`, bError);
+            return 0;
+        }
     }
 };

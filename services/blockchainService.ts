@@ -131,10 +131,14 @@ export class BlockchainService {
     private getProvider(): JsonRpcProvider {
         const rpc = this.getRPC();
         try {
+            // Explicitly verify if it's Alchemy and prioritize it
+            if (rpc.includes('alchemy.com')) {
+                console.log("[BlockchainService] Using Alchemy Premium RPC");
+            }
             // Explicitly set network to 137 (Polygon) for faster initialization
             return new JsonRpcProvider(rpc, 137, { staticNetwork: true });
         } catch (e) {
-            console.warn("[BlockchainService] Primary RPC failed, using fallback:", FALLBACK_RPCS[0]);
+            console.warn("[BlockchainService] Primary RPC (Alchemy) failed, using fallback:", FALLBACK_RPCS[0]);
             return new JsonRpcProvider(FALLBACK_RPCS[0], 137, { staticNetwork: true });
         }
     }

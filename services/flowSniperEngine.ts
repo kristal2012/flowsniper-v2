@@ -70,6 +70,17 @@ export class FlowSniperEngine {
         };
 
         while (this.active) {
+            // Pulse log to show activity
+            this.onLog({
+                id: 'pulse-' + Date.now(),
+                timestamp: new Date().toLocaleTimeString(),
+                type: 'SCAN_PULSE',
+                pair: 'Scanning Network (Alchemy)...',
+                profit: 0,
+                status: 'SUCCESS',
+                hash: ''
+            });
+
             // Stop if drawdown hit
             if (this.dailyPnl <= this.maxDrawdown) {
                 console.warn("Daily drawdown limit reached. Pausing engine.");
@@ -157,10 +168,21 @@ export class FlowSniperEngine {
                 };
 
                 this.onLog(step);
+            } else {
+                // Pulse log when no price metadata found (transparency)
+                this.onLog({
+                    id: 'pulse-miss-' + Date.now(),
+                    timestamp: new Date().toLocaleTimeString(),
+                    type: 'LIQUIDITY_SCAN',
+                    pair: `${randomSymbol} (No Market Edge)`,
+                    profit: 0,
+                    status: 'FAILED',
+                    hash: ''
+                });
             }
 
-            // High frequency simulation: 100ms - 800ms
-            await new Promise(resolve => setTimeout(resolve, Math.random() * 700 + 100));
+            // High frequency simulation: 50ms - 300ms (EXTREME HFT)
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 250 + 50));
         }
     }
 }
