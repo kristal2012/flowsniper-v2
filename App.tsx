@@ -211,14 +211,26 @@ const App: React.FC = () => {
           const bal = await blockchainService.getBalance(t.addr, addr).catch(() => '0');
           if (Number(bal) > 0.0001) {
             console.log(`[Liquidate] Selling ${bal} ${t.name} from ${addr} to USDT...`);
-            await blockchainService.executeTrade(t.addr, usdtAddr, bal, true).catch(e => {
-              console.error(`Failed to sell ${t.name}:`, e);
+            // Pass addr as fromAddress to ensure it uses the correct wallet (Owner or Operator)
+            await blockchainService.executeTrade(t.addr, usdtAddr, bal, true, addr).catch(e => {
+              console.error(`Failed to sell ${t.name} from ${addr}:`, e);
             });
           }
         }
       }
 
-      alert("LIQUIDAÇÃO CONCLUÍDA! Seu capital deve retornar para USDT em instantes. Dê F5 se necessário.");
+      // Final: Move ALL USDT from Operator to Master for consolidation
+      if (opAddr !== ownerAddr) {
+        const opUsdtFinal = await blockchainService.getBalance(usdtAddr, opAddr).catch(() => '0');
+        if (Number(opUsdtFinal) > 0.1) {
+          console.log(`[Consolidate] Moving ${opUsdtFinal} USDT from Operator to Master Wallet...`);
+          await blockchainService.transferTokens(usdtAddr, ownerAddr, opUsdtFinal).catch(e => {
+            console.error("Failed to consolidate USDT:", e);
+          });
+        }
+      }
+
+      alert("CONSOLIDAÇÃO CONCLUÍDA! Seu capital foi convertido para USDT e enviado para sua Carteira Master (Rabby). Dê F5 se necessário.");
       fetchRealBalances();
     } catch (err: any) {
       alert("Erro na Liquidação: " + (err.message || "Desconhecido"));

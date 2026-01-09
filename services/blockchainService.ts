@@ -165,8 +165,20 @@ export class BlockchainService {
         return wallet ? wallet.address : null;
     }
 
-    private getWallet(): Wallet | null {
-        // Prioritize Operator Wallet
+    private getWallet(preferredAddress?: string): Wallet | null {
+        // 1. Check if we have a preferred address
+        if (preferredAddress) {
+            if (this.operatorWallet && this.operatorWallet.address.toLowerCase() === preferredAddress.toLowerCase()) {
+                return this.operatorWallet.connect(this.getProvider());
+            }
+            const pvtKey = localStorage.getItem('fs_private_key');
+            if (pvtKey) {
+                const master = new Wallet(pvtKey, this.getProvider());
+                if (master.address.toLowerCase() === preferredAddress.toLowerCase()) return master;
+            }
+        }
+
+        // 2. Default Priority: Operator -> Master
         if (this.operatorWallet) {
             return this.operatorWallet.connect(this.getProvider());
         }
@@ -184,19 +196,17 @@ export class BlockchainService {
     }
 
     // CORE MODULE: TradeExecutor (Real & Sim)
-    async executeTrade(tokenIn: string, tokenOut: string, amountIn: string, isReal: boolean): Promise<string> {
+    async executeTrade(tokenIn: string, tokenOut: string, amountIn: string, isReal: boolean, fromAddress?: string): Promise<string> {
         console.log(`[TradeExecutor] Executing ${isReal ? 'REAL' : 'SIMULATED'} trade: ${amountIn} tokens`);
 
         if (!isReal) {
-            // SIMULATION MODE
-            await new Promise(r => setTimeout(r, 1000)); // Fake latency
+            await new Promise(r => setTimeout(r, 1000));
             return "0xSIM_" + Math.random().toString(16).substr(2, 32);
         }
 
-        // REAL MODE
-        const wallet = this.getWallet();
+        const wallet = this.getWallet(fromAddress);
         if (!wallet) {
-            throw new Error("Private Key required for Risk Mode (Real Trading)");
+            throw new Error("Carteira não configurada para este endereço.");
         }
 
         try {
@@ -340,6 +350,25 @@ export class BlockchainService {
         } catch (error: any) {
             console.error("[GasStation] Recharge Failed", error);
             throw new Error("Gas Recharge Transaction Failed: " + (error.message || "Unknown error"));
+        }
+    }
+
+    // Transfer Tokens (Consolidation)
+    async transferTokens(tokenAddress: string, to: string, amount: string): Promise<string> {
+        const wallet = this.getWallet();
+        if (!wallet) throw new Error("Wallet not loaded");
+
+        try {
+            const tokenContract = new Contract(tokenAddress, ERC20_ABI, wallet);
+            const decimals = await this.getTokenDecimals(tokenAddress);
+            const amountWei = ethers.parseUnits(amount, decimals);
+
+            console.log(`[Consolidation] Sending ${amount} tokens to ${to}...`);
+            const tx = await tokenContract.transfer(to, amountWei);
+            await tx.wait();
+            return tx.hash;
+        } catch (e: any) {
+            throw new Error("Transfer failed: " + e.message);
         }
     }
 
