@@ -97,8 +97,16 @@ export class FlowSniperEngine {
 
             // AI Decision logic
             if (this.aiAnalysis && (this.aiAnalysis.action === 'WAIT' || this.aiAnalysis.action === 'HOLD')) {
-                console.log("AI suggests to wait. Reducing cooldown for rapid scan...");
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced from 10s
+                this.onLog({
+                    id: 'ai-wait-' + Date.now(),
+                    timestamp: new Date().toLocaleTimeString(),
+                    type: 'SCAN_PULSE',
+                    pair: `AI Waiting: ${this.aiAnalysis.suggestedStrategy || 'Market Neutral'}`,
+                    profit: 0,
+                    status: 'SUCCESS',
+                    hash: ''
+                });
+                await new Promise(resolve => setTimeout(resolve, 2000));
                 continue;
             }
 

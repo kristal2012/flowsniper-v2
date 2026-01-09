@@ -190,28 +190,23 @@ const App: React.FC = () => {
   useEffect(() => {
     sniperRef.current = new FlowSniperEngine(
       (newStep: FlowStep) => {
-        // High Speed Filtering: We keep only real successes OR a limited number of pulses
-        if (newStep.type === 'SCAN_PULSE') {
-          // We can use a separate state if we want to show "Active Scanning" in a corner
-          return;
-        }
-
-        // Map FlowStep to SniperStep for the UI
+        // High Speed Filtering: We keep only real successes OR status pulses
         const mappedStep: SniperStep = {
           id: newStep.id,
           timestamp: newStep.timestamp,
           path: newStep.pair.includes('/') ? newStep.pair.split('/') : [newStep.pair],
           profit: newStep.profit,
-          status: newStep.status === 'SUCCESS' ? 'SUCCESS' : 'EXPIRED',
+          status: newStep.status === 'SUCCESS' ? (newStep.type === 'SCAN_PULSE' ? 'EXPIRED' : 'SUCCESS') : 'EXPIRED',
           hash: newStep.hash
         };
 
         setSniperLogs(prev => {
-          // If it's a "pulse-miss" (liquidity scan without edge), we keep only 3 of them
-          if (newStep.status === 'FAILED') {
-            const filtered = prev.filter(l => l.status !== 'EXPIRED'); // Clear old misses
+          // If it's a pulse/scan log, we replace the previous pulse log to keep the list clean
+          if (newStep.type === 'SCAN_PULSE' || newStep.status === 'FAILED') {
+            const filtered = prev.filter(l => l.status !== 'EXPIRED');
             return [mappedStep, ...filtered].slice(0, 15);
           }
+          // Real successful trades are always added at the top and stay there
           return [mappedStep, ...prev].slice(0, 25);
         });
 
@@ -724,7 +719,7 @@ const App: React.FC = () => {
                           <span className="text-zinc-600 text-[10px] w-20">{log.timestamp}</span>
                           <div className="flex flex-col">
                             <span className={`font-black uppercase tracking-tighter text-sm ${log.status === 'EXPIRED' ? 'text-zinc-600' : (log.profit < 0 ? 'text-rose-500' : 'text-emerald-500')}`}>
-                              {log.status === 'EXPIRED' ? 'Scanning Network...' : (log.profit < 0 ? 'Cost Recapture' : 'Successful Snipe')}
+                              {log.status === 'EXPIRED' ? (log.path[0].includes('AI') ? 'AI Brain Processing' : 'Scanning Network') : (log.profit < 0 ? 'Cost Recapture' : 'Successful Snipe')}
                             </span>
                             <span className="text-zinc-500 text-[10px] mt-1 font-bold">{log.path.join(' → ')}</span>
                           </div>
@@ -744,8 +739,8 @@ const App: React.FC = () => {
                             </>
                           ) : (
                             <div className="flex items-center gap-2 text-zinc-700">
-                              <span className="text-[10px] font-bold italic">Buscando Falha...</span>
-                              <Activity size={12} className="animate-pulse" />
+                              <span className="text-[10px] font-bold italic">{log.path[0].includes('AI') ? 'AI Analyzing' : 'DEX Research'}</span>
+                              <div className="w-2 h-2 rounded-full bg-emerald-500/40 animate-ping" />
                             </div>
                           )}
                         </div>
