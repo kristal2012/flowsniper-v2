@@ -16,7 +16,7 @@ export class FlowSniperEngine {
     private gasBalance: number = 0;
     private totalBalance: number = 0;
     private aiAnalysis: any = null;
-    private tradeAmount: string = "3.0";
+    private tradeAmount: string = "10.0"; // Increased for better gas efficiency
     private slippage: number = 0.005; // 0.5%
     private minProfit: number = 0.001; // 0.1%
     private consolidationThreshold: number = 10.0;
@@ -27,7 +27,7 @@ export class FlowSniperEngine {
         this.onBalanceUpdate = onBalanceUpdate;
     }
 
-    start(mode: 'REAL' | 'DEMO', gas: number = 0, balance: number = 0, analysis: any = null, tradeAmount: string = "3.0", slippage: number = 0.005, minProfit: number = 0.001, consolidationThreshold: number = 10.0) {
+    start(mode: 'REAL' | 'DEMO', gas: number = 0, balance: number = 0, analysis: any = null, tradeAmount: string = "10.0", slippage: number = 0.005, minProfit: number = 0.001, consolidationThreshold: number = 10.0) {
         if (this.active) {
             this.updateContext(gas, balance, analysis, tradeAmount, slippage, minProfit, consolidationThreshold);
             this.runMode = mode;
@@ -46,7 +46,7 @@ export class FlowSniperEngine {
         this.run();
     }
 
-    updateContext(gas: number, balance: number, analysis: any, tradeAmount: string = "3.0", slippage: number = 0.005, minProfit: number = 0.001, consolidationThreshold: number = 10.0) {
+    updateContext(gas: number, balance: number, analysis: any, tradeAmount: string = "10.0", slippage: number = 0.005, minProfit: number = 0.001, consolidationThreshold: number = 10.0) {
         this.gasBalance = gas;
         this.totalBalance = balance;
         this.aiAnalysis = analysis;
@@ -61,7 +61,7 @@ export class FlowSniperEngine {
     }
 
     private async run() {
-        const symbols = ['POLUSDT', 'BTCUSDT', 'ETHUSDT', 'LINKUSDT', 'UNIUSDT', 'AAVEUSDT', 'QUICKUSDT', 'USDCUSDT', 'SOLUSDT'];
+        const symbols = ['POLUSDT', 'WMATICUSDT', 'ETHUSDT', 'BTCUSDT', 'USDCUSDT']; // High liquidity pairs only
         const dexes = ['QuickSwap [Active]', 'QuickSwap [Aggregator]'];
 
         // Token Addresses for Polygon
