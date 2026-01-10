@@ -910,7 +910,7 @@ const App: React.FC = () => {
                             </>
                           ) : (
                             <div className="flex items-center gap-2 text-zinc-700">
-                              <span className="text-[10px] font-bold italic">{log.path[0].includes('AI') ? 'AI Analyzing' : 'DEX Research'}</span>
+                              <span className="text-[10px] font-bold italic">{log.path[0].includes('Scanning') || log.path[0].includes('SCAN') ? 'Procurando Arbitragem...' : 'Processando'}</span>
                               <div className="w-2 h-2 rounded-full bg-emerald-500/40 animate-ping" />
                             </div>
                           )}

@@ -149,13 +149,21 @@ export class FlowSniperEngine {
                 let buyAmountOut = "0";
 
                 try {
-                    // Step A: How much token do we get for our USDT on DEX?
+                    // Step A: How much token do we get for our USDT?
+                    console.log(`[Strategy] Checking ${searchTag}: Fetching DEX quote for ${this.tradeAmount} USDT...`);
                     const buyAmounts = await blockchainService.getAmountsOut(this.tradeAmount, [tokenIn, tokenOut]);
+
+                    if (!buyAmounts || buyAmounts.length < 2) {
+                        console.warn(`[Strategy] No route found for ${searchTag} on QuickSwap`);
+                        await new Promise(resolve => setTimeout(resolve, 500)); // Small delay to prevent spamming
+                        continue;
+                    }
+
                     if (buyAmounts && buyAmounts.length >= 2) {
                         const decimalsOut = await (blockchainService as any).getTokenDecimals(tokenOut);
                         buyAmountOut = (Number(buyAmounts[1]) / (10 ** decimalsOut)).toString();
 
-                        // Step B: What is this amount worth at the GLOBAL (Binance/Bybit) Price?
+                        // Step B: Compare with Global Price
                         const globalPrice = price;
                         const globalValueUsdt = Number(buyAmountOut) * globalPrice;
 
@@ -165,8 +173,11 @@ export class FlowSniperEngine {
 
                         const targetProfit = Number(this.tradeAmount) * this.minProfit;
 
+                        console.log(`[Strategy] ${searchTag}: Buy ${buyAmountOut} tokens @ Global $${globalPrice} = $${globalValueUsdt.toFixed(4)} | Gross: $${grossProfit.toFixed(4)} | Net: $${estimatedNetProfit.toFixed(4)} | Target: $${targetProfit.toFixed(4)}`);
+
                         if (estimatedNetProfit > targetProfit) {
                             isProfitable = true;
+                            console.log(`[Strategy] ✅ ${searchTag} IS PROFITABLE! Executing...`);
                         } else if (grossProfit > 0) {
                             // Provide feedback: Trade found but gas/profit too low
                             const spreadPct = (grossProfit / Number(this.tradeAmount)) * 100;
@@ -181,8 +192,8 @@ export class FlowSniperEngine {
                             });
                         }
                     }
-                } catch (e) {
-                    console.warn("[Strategy] Verification failed for", searchTag);
+                } catch (e: any) {
+                    console.warn("[Strategy] Verification failed for", searchTag, ":", e.message || e);
                 }
 
                 if (!isProfitable) {

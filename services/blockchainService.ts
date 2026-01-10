@@ -153,9 +153,10 @@ export class BlockchainService {
             const amountWei = ethers.parseUnits(amountIn, decimals);
 
             const amounts = await router.getAmountsOut(amountWei, path);
+            console.log(`[getAmountsOut] ${amountIn} ${path[0]} -> ${amounts.length > 1 ? ethers.formatUnits(amounts[1], await this.getTokenDecimals(path[1])) : '0'} ${path[1]}`);
             return amounts;
-        } catch (e) {
-            console.error("[BlockchainService] getAmountsOut Error:", e);
+        } catch (e: any) {
+            console.error(`[BlockchainService] getAmountsOut Error for path ${path.join('->')}:`, e.message || e);
             return [];
         }
     }
