@@ -56,8 +56,11 @@ export const fetchHistoricalData = async (symbol: string = 'POLUSDT', interval: 
 };
 
 export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<number> => {
+    // Normalize symbols for Binance (WMATIC -> MATIC)
+    const normalizedSymbol = symbol.replace('WMATIC', 'MATIC').replace('POL', 'MATIC');
+
     try {
-        const response = await fetch(`${BYBIT_V5_URL}/tickers?category=linear&symbol=${symbol}`);
+        const response = await fetch(`${BYBIT_V5_URL}/tickers?category=linear&symbol=${normalizedSymbol}`);
         const data = await response.json();
 
         if (data.retCode === 0 && data.result && data.result.list && data.result.list.length > 0) {
@@ -65,9 +68,9 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
         }
         throw new Error("Bybit price empty");
     } catch (error) {
-        console.warn(`[MarketData] Bybit price failed for ${symbol}, trying Binance fallback...`);
+        console.warn(`[MarketData] Bybit price failed for ${normalizedSymbol}, trying Binance fallback...`);
         try {
-            const binanceUrl = `/binance-api/api/v3/ticker/price?symbol=${symbol}`;
+            const binanceUrl = `/binance-api/api/v3/ticker/price?symbol=${normalizedSymbol}`;
             const response = await fetch(binanceUrl);
             const data = await response.json();
             return parseFloat(data.price);
@@ -77,12 +80,13 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
                 // CoinGecko fallback (no CORS issues)
                 const coinGeckoMap: { [key: string]: string } = {
                     'POLUSDT': 'matic-network',
+                    'MATICUSDT': 'matic-network',
                     'WMATICUSDT': 'matic-network',
                     'ETHUSDT': 'ethereum',
                     'BTCUSDT': 'bitcoin',
                     'USDCUSDT': 'usd-coin'
                 };
-                const coinId = coinGeckoMap[symbol] || 'matic-network';
+                const coinId = coinGeckoMap[normalizedSymbol] || coinGeckoMap[symbol] || 'matic-network';
                 const cgUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`;
                 const cgResp = await fetch(cgUrl);
                 const cgData = await cgResp.json();

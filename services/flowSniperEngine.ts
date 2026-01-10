@@ -197,10 +197,15 @@ export class FlowSniperEngine {
                 }
 
                 if (!isProfitable) {
-                    // Skip and wait (Both in REAL and DEMO)
-                    // This gives the user a realistic sense of when the bot would actually Fire
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    continue;
+                    // In DEMO mode, occasionally execute even if marginally unprofitable (for demonstration)
+                    // In REAL mode, NEVER execute unprofitable trades
+                    if (this.runMode === 'DEMO' && estimatedNetProfit > -0.5 && Math.random() < 0.3) {
+                        console.log(`[DEMO] Executing marginally unprofitable trade for demonstration: Net ${estimatedNetProfit.toFixed(4)}`);
+                        isProfitable = true; // Override for demo
+                    } else {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        continue;
+                    }
                 }
 
                 // EXECUTION
