@@ -87,7 +87,7 @@ export class FlowSniperEngine {
                 id: 'pulse-' + Date.now(),
                 timestamp: new Date().toLocaleTimeString(),
                 type: 'SCAN_PULSE',
-                pair: 'Scanning Strategy: Momentum/Arbitrage...',
+                pair: 'Scanning: Buscando distorção de preço DEX vs Global...',
                 profit: 0,
                 status: 'SUCCESS',
                 hash: ''
@@ -130,7 +130,7 @@ export class FlowSniperEngine {
                     continue;
                 }
 
-                const GAS_ESTIMATE_USDT = 0.08;
+                const GAS_ESTIMATE_USDT = 0.03; // ~0.04 POL on Polygon is roughly $0.03
 
                 // --- SMART STRATEGY: PRE-FLIGHT VERIFICATION ---
                 let isProfitable = false;
@@ -149,10 +149,25 @@ export class FlowSniperEngine {
                         const globalValueUsdt = Number(buyAmountOut) * globalPrice;
 
                         const grossProfit = globalValueUsdt - Number(this.tradeAmount);
-                        estimatedNetProfit = grossProfit - (GAS_ESTIMATE_USDT * 2);
+                        const totalGas = (GAS_ESTIMATE_USDT * 2);
+                        estimatedNetProfit = grossProfit - totalGas;
 
-                        if (estimatedNetProfit > Number(this.tradeAmount) * this.minProfit) {
+                        const targetProfit = Number(this.tradeAmount) * this.minProfit;
+
+                        if (estimatedNetProfit > targetProfit) {
                             isProfitable = true;
+                        } else if (grossProfit > 0) {
+                            // Provide feedback: Trade found but gas/profit too low
+                            const spreadPct = (grossProfit / Number(this.tradeAmount)) * 100;
+                            this.onLog({
+                                id: 'pulse-' + Date.now(),
+                                timestamp: new Date().toLocaleTimeString(),
+                                type: 'SCAN_PULSE',
+                                pair: `${searchTag}: Spread ${spreadPct.toFixed(2)}% detectado. Inviável por Gás ($${totalGas.toFixed(2)}).`,
+                                profit: 0,
+                                status: 'SUCCESS',
+                                hash: ''
+                            });
                         }
                     }
                 } catch (e) {
