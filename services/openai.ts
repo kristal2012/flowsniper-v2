@@ -1,7 +1,4 @@
 
-// Declare puter for TypeScript
-declare const puter: any;
-
 export const analyzePerformance = async (assets: any[], transactions: any[], apiKey?: string) => {
   const prompt = `Analise a seguinte carteira e histórico de operações do robô FlowSniper:
   Assets: ${JSON.stringify(assets)}
@@ -16,60 +13,52 @@ export const analyzePerformance = async (assets: any[], transactions: any[], api
   }`;
 
   try {
-    // 1. Prioridade: Chave API Direta (Otimizado para detecção sk-)
-    if (apiKey && apiKey.trim().startsWith('sk-')) {
-      console.log("Using direct OpenAI API...");
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: prompt }],
-          response_format: { type: "json_object" }
-        })
-      });
-      const data = await response.json();
-      return JSON.parse(data.choices[0].message.content);
+    // Usar a chave da variável de ambiente ou a fornecida pelo usuário
+    const openaiKey = apiKey || import.meta.env.VITE_OPENAI_API_KEY;
+
+    if (!openaiKey || !openaiKey.trim().startsWith('sk-')) {
+      throw new Error('OpenAI API Key não configurada ou inválida');
     }
 
-    // 2. Tentar Puter (Se carregado e sem bloqueio)
-    if (typeof puter !== 'undefined') {
-      try {
-        console.log("Attempting Puter AI...");
-        const response = await puter.ai.chat(prompt, { model: 'gpt-4o' });
-        const text = typeof response === 'string' ? response : response.message.content;
-        const cleanedJson = text.replace(/```json\n?|```/g, '').trim();
-        return JSON.parse(cleanedJson);
-      } catch (puterError) {
-        console.warn("Puter AI blocked or failed, falling back to Pollinations...");
-      }
-    }
+    console.log("🤖 Using OpenAI API for analysis...");
 
-    // 3. Fallback Final: Pollinations.ai (Anônimo e sem conta)
-    console.log("Using Pollinations AI anonymous fallback...");
-    const pollinationsUrl = `https://text.pollinations.ai/`;
-    const response = await fetch(pollinationsUrl, {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiKey}`
+      },
       body: JSON.stringify({
-        messages: [{ role: 'user', content: prompt + "\nRESPONDA APENAS O JSON PURO." }],
-        jsonMode: true
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: "json_object" }
       })
     });
 
-    const text = await response.text();
-    const cleanedJson = text.replace(/```json\n?|```/g, '').trim();
-    return JSON.parse(cleanedJson);
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`OpenAI API Error: ${errorData.error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    let content = data.choices[0].message.content;
+
+    // Clean Markdown code blocks if present
+    content = content.replace(/^```json\s*/g, '').replace(/^```\s*/g, '').replace(/```$/g, '');
+
+    const result = JSON.parse(content);
+
+    console.log("✅ OpenAI analysis completed successfully");
+    return result;
 
   } catch (error) {
-    console.error("FlowSniper AI Fallback Error:", error);
+    console.error("❌ FlowSniper AI Error:", error);
+
+    // Retornar análise de fallback em caso de erro
     return {
-      summary: "O serviço de IA está em modo de segurança. O robô continua operando com parâmetros padrão.",
-      riskLevel: "Estável",
-      recommendation: "Monitoramento manual sugerido.",
+      summary: "⚠️ Serviço de IA temporariamente indisponível. O robô continua operando com parâmetros padrão.",
+      riskLevel: "Médio",
+      recommendation: "Configure sua OpenAI API Key nas configurações para análises detalhadas.",
       suggestedStrategy: "Slippage Capture"
     };
   }

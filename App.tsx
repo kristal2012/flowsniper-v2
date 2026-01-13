@@ -31,12 +31,7 @@ import {
   BrainCircuit
 } from 'lucide-react';
 
-declare global {
-  interface Window {
-    puter: any;
-  }
-}
-const puter = typeof window !== 'undefined' ? (window as any).puter : undefined;
+
 
 import { Asset, Transaction, PerformanceData, ManagerProfile, SniperStep, FlowStep } from './types';
 import { mockManager, mockAssets, mockPerformance, mockTransactions } from './services/mockData';
@@ -534,7 +529,7 @@ const App: React.FC = () => {
               timeoutPromise
             ]) as any;
 
-            const provider = openAiKey.startsWith('sk-') ? 'OpenAI' : (typeof puter !== 'undefined' ? 'Puter.js' : 'Pollinations AI');
+            const provider = 'OpenAI';
             setAnalysis({ ...aiResult, provider });
           } catch (raceError) {
             throw raceError; // Re-throw to be caught by outer catch
@@ -1065,7 +1060,7 @@ const App: React.FC = () => {
 
                   <div className="space-y-4">
                     <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                      <Cpu size={14} className="text-[#f01a74]" /> OpenAI API Key (Opcional - Backup do Puter)
+                      <Cpu size={14} className="text-[#f01a74]" /> OpenAI API Key
                     </label>
                     <div className="relative">
                       <input
@@ -1076,7 +1071,7 @@ const App: React.FC = () => {
                         className="w-full bg-[#0c0c0e] border border-zinc-800 rounded-2xl p-5 font-mono text-xs outline-none focus:border-[#f01a74]/50 transition-all"
                       />
                     </div>
-                    <p className="text-[9px] text-zinc-600 italic">* Se deixado em branco, o sistema tentará usar o Puter (Grátis) automaticamente.</p>
+                    <p className="text-[9px] text-zinc-600 italic">* A chave está configurada no arquivo .env. Você pode sobrescrever aqui se desejar.</p>
                   </div>
 
                   <div className="space-y-3">
