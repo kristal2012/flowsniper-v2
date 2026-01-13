@@ -61,7 +61,7 @@ export class FlowSniperEngine {
     }
 
     private async run() {
-        const symbols = ['POLUSDT', 'WMATICUSDT', 'ETHUSDT', 'BTCUSDT', 'USDCUSDT']; // High liquidity pairs only
+        const symbols = ['POLUSDT', 'WMATICUSDT', 'ETHUSDT', 'BTCUSDT', 'USDCUSDT', 'DAIUSDT', 'LINKUSDT', 'UNIUSDT', 'GHSTUSDT', 'LDOUSDT', 'GRTUSDT']; // High liquidity pairs only
         const dexes = ['QuickSwap [Active]', 'QuickSwap [Aggregator]'];
 
         // Token Addresses for Polygon
@@ -76,7 +76,11 @@ export class FlowSniperEngine {
             'AAVE': '0xd6df30500db6e36d4336069904944f2b93652618',
             'QUICK': '0xf28768daa238a2e52b21697284f1076f8a02c98d',
             'USDC': '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
-            'SOL': '0x7df36098c4f923b7596ad881a70428f62c0199ba'
+            'SOL': '0x7df36098c4f923b7596ad881a70428f62c0199ba',
+            'DAI': '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063',
+            'GHST': '0x385Eeac5cB85A38A9a07A70c73e0a3271CfB4333',
+            'LDO': '0xC3C7d422809852031b44ab29EEC9F1EfF2A58756',
+            'GRT': '0x5fe2B58c01396b03525D42D55DB1a9c1c3d072EE'
         };
 
         const GAS_ESTIMATE_USDT = 0.03;
@@ -223,20 +227,16 @@ export class FlowSniperEngine {
                     await new Promise(resolve => setTimeout(resolve, 1000));
 
                     if (!isProfitable) {
-                        if (this.runMode === 'REAL') {
-                            continue; // Strict safety: Never trade if not profitable in Real mode
-                        } else {
-                            // DEMO MODE: "Stimulation" Logic
-                            // If the market is quiet, occasionally SIMULATE a profitable trade so the user sees activity.
-                            if (Math.random() < 0.25) { // 25% chance to find a "fake" opportunity if market is flat
-                                isProfitable = true;
-                                estimatedNetProfit = (Number(this.tradeAmount) * (0.002 + Math.random() * 0.008)); // 0.2% - 1.0% simulated profit
-                                bestRoute = Math.random() > 0.5 ? 'Uniswap (V3)' : 'QuickSwap (V2)'; // Simulate route
-                                console.log(`[Strategy-DEMO] Simulating Opportunity for ${searchTag} on ${bestRoute}`);
-                            } else {
-                                continue; // Skip the rest to avoid spamming too much
+                        // "Smart" Logging: Show WHY we are not trading
+                        // If we found a positive gross profit but it was eaten by gas, tell the user!
+                        if (estimatedNetProfit > -1.0 && estimatedNetProfit <= 0) { // e.g. Loss up to -$1.00 (Gas dominant)
+                            const spreadPct = ((Number(buyAmountOut) * price) / Number(this.tradeAmount) - 1) * 100;
+                            if (spreadPct > 0) { // Only log if there was ANY spread
+                                console.log(`[Strategy] 🟡 ${searchTag}: Spread ${spreadPct.toFixed(3)}% found on ${bestRoute}, but Gas ($${(GAS_ESTIMATE_USDT * 2).toFixed(2)}) consumes profit. Net: $${estimatedNetProfit.toFixed(4)}.`);
                             }
                         }
+
+                        continue; // Strict: No profit, no trade.
                     }
 
                     if (this.runMode === 'REAL') {
