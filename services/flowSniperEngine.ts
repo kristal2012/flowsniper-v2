@@ -318,5 +318,5 @@ export class FlowSniperEngine {
         await new Promise(resolve => setTimeout(resolve, 2000));
     }
 }
-}
+
 
