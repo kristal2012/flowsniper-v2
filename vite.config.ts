@@ -14,6 +14,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/bybit-api/, ''),
         },
+        '/binance-api': {
+          target: 'https://api.binance.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/binance-api/, ''),
+        },
       }
     },
     plugins: [react()],
