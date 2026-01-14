@@ -175,8 +175,8 @@ export class BlockchainService {
         }
     }
 
-    // NEW: Uniswap V3 Quoter
-    public async getQuoteV3(tokenIn: string, tokenOut: string, amountIn: string, fee: number = 3000): Promise<string> {
+    // NEW: Uniswap V3 Quoter (Multi-Tier)
+    public async getQuoteV3(tokenIn: string, tokenOut: string, amountIn: string): Promise<string> {
         try {
             const provider = this.getProvider();
             const quoter = new Contract(QUOTER_V3_ADDRESS, QUOTER_ABI, provider);
@@ -185,21 +185,38 @@ export class BlockchainService {
             const decimalsOut = await this.getTokenDecimals(tokenOut);
             const amountWei = ethers.parseUnits(amountIn, decimalsIn);
 
-            // quoteExactInputSingle is not view in V3 Quoter v1, but we can callStatic it
-            // Note: In ethers v6, use .staticCall
-            const quoteWei = await quoter.quoteExactInputSingle.staticCall(
-                tokenIn,
-                tokenOut,
-                fee,
-                amountWei,
-                0
-            );
+            const tiers = [500, 3000, 10000]; // 0.05%, 0.3%, 1%
+            let bestQuoteWei = BigInt(0);
+            let bestFee = 3000;
 
-            const formatted = ethers.formatUnits(quoteWei, decimalsOut);
-            console.log(`[getQuoteV3] ${amountIn} -> ${formatted} (Fee: ${fee})`);
-            return formatted;
+            // Parallel scan of all tiers for speed
+            const quotes = await Promise.all(tiers.map(async (fee) => {
+                try {
+                    return await quoter.quoteExactInputSingle.staticCall(
+                        tokenIn,
+                        tokenOut,
+                        fee,
+                        amountWei,
+                        0
+                    );
+                } catch (e) {
+                    return BigInt(0);
+                }
+            }));
+
+            // Find best
+            quotes.forEach((q, index) => {
+                if (q > bestQuoteWei) {
+                    bestQuoteWei = q;
+                    bestFee = tiers[index];
+                }
+            });
+
+            const formatted = ethers.formatUnits(bestQuoteWei, decimalsOut);
+            console.log(`[getQuoteV3] Best Quote: ${amountIn} -> ${formatted} (Fee: ${bestFee})`);
+            return formatted; // Ideally we should return fee too, but for now we optimize for price
         } catch (e: any) {
-            // V3 might fail if no pool exists for this fee tier
+            console.error("[getQuoteV3] Failed", e);
             return "0";
         }
     }
