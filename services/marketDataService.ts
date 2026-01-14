@@ -92,7 +92,12 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
                     'LDOUSDT': 'lido-dao',
                     'GRTUSDT': 'the-graph'
                 };
-                const coinId = coinGeckoMap[normalizedSymbol] || coinGeckoMap[symbol] || 'matic-network';
+                const coinId = coinGeckoMap[normalizedSymbol] || coinGeckoMap[symbol];
+
+                if (!coinId) {
+                    throw new Error(`CoinGecko ID not found for ${symbol} / ${normalizedSymbol}`);
+                }
+
                 const cgUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`;
                 const cgResp = await fetch(cgUrl);
                 const cgData = await cgResp.json();
