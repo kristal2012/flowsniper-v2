@@ -87,37 +87,33 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
 
     console.warn(`[MarketData] Exchanges failed for ${symbol}, trying CoinGecko...`);
     try {
-        console.warn(`[MarketData] Binance failed, trying CoinGecko...`);
-        try {
-            // CoinGecko fallback (no CORS issues)
-            const coinGeckoMap: { [key: string]: string } = {
-                'POLUSDT': 'matic-network',
-                'MATICUSDT': 'matic-network',
-                'WMATICUSDT': 'matic-network',
-                'ETHUSDT': 'ethereum',
-                'BTCUSDT': 'bitcoin',
-                'USDCUSDT': 'usd-coin',
-                'DAIUSDT': 'dai',
-                'LINKUSDT': 'chainlink',
-                'UNIUSDT': 'uniswap',
-                'GHSTUSDT': 'aavegotchi',
-                'LDOUSDT': 'lido-dao',
-                'GRTUSDT': 'the-graph'
-            };
-            const coinId = coinGeckoMap[normalizedSymbol] || coinGeckoMap[symbol];
+        // CoinGecko fallback (no CORS issues)
+        const coinGeckoMap: { [key: string]: string } = {
+            'POLUSDT': 'matic-network',
+            'MATICUSDT': 'matic-network',
+            'WMATICUSDT': 'matic-network',
+            'ETHUSDT': 'ethereum',
+            'BTCUSDT': 'bitcoin',
+            'USDCUSDT': 'usd-coin',
+            'DAIUSDT': 'dai',
+            'LINKUSDT': 'chainlink',
+            'UNIUSDT': 'uniswap',
+            'GHSTUSDT': 'aavegotchi',
+            'LDOUSDT': 'lido-dao',
+            'GRTUSDT': 'the-graph'
+        };
+        const coinId = coinGeckoMap[normalizedSymbol] || coinGeckoMap[symbol];
 
-            if (!coinId) {
-                throw new Error(`CoinGecko ID not found for ${symbol} / ${normalizedSymbol}`);
-            }
-
-            const cgUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`;
-            const cgResp = await fetch(cgUrl);
-            const cgData = await cgResp.json();
-            return cgData[coinId]?.usd || 0;
-        } catch (cgError) {
-            console.error(`[MarketData] All price sources failed for ${symbol}`, cgError);
-            return 0;
+        if (!coinId) {
+            throw new Error(`CoinGecko ID not found for ${symbol} / ${normalizedSymbol}`);
         }
-    }
+
+        const cgUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`;
+        const cgResp = await fetch(cgUrl);
+        const cgData = await cgResp.json();
+        return cgData[coinId]?.usd || 0;
+    } catch (cgError) {
+        console.error(`[MarketData] All price sources failed for ${symbol}`, cgError);
+        return 0;
     }
 };
