@@ -59,7 +59,14 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
     // Normalize symbols for Binance (WMATIC -> MATIC)
     const normalizedSymbol = symbol.replace('WMATIC', 'MATIC').replace('POL', 'MATIC');
 
-    // List of symbol variations to try (e.g., POLUSDT, MATICUSDT)
+    const withTimeout = (promise: Promise<any>, ms: number) => {
+        return Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
+        ]);
+    };
+
+    // List of symbol variations to try
     const candidates = [normalizedSymbol];
     if (symbol !== normalizedSymbol) candidates.push(symbol);
     if (symbol.includes('POL') && !candidates.includes('MATICUSDT')) candidates.push(symbol.replace('POL', 'MATIC'));
@@ -68,8 +75,10 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
     // 1. Try Bybit
     for (const s of candidates) {
         try {
-            const response = await fetch(`${BYBIT_V5_URL}/tickers?category=linear&symbol=${s}`);
-            const data = await response.json();
+            const data = await withTimeout(
+                fetch(`${BYBIT_V5_URL}/tickers?category=linear&symbol=${s}`).then(r => r.json()),
+                5000
+            );
             if (data.retCode === 0 && data.result?.list?.length > 0) {
                 const p = parseFloat(data.result.list[0].lastPrice);
                 console.log(`[MarketData] ${s} price fetched from Bybit: $${p}`);
@@ -81,8 +90,10 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
     // 2. Try Binance
     for (const s of candidates) {
         try {
-            const response = await fetch(`/binance-api/api/v3/ticker/price?symbol=${s}`);
-            const data = await response.json();
+            const data = await withTimeout(
+                fetch(`/binance-api/api/v3/ticker/price?symbol=${s}`).then(r => r.json()),
+                5000
+            );
             if (data.price) {
                 const p = parseFloat(data.price);
                 console.log(`[MarketData] ${s} price fetched from Binance: $${p}`);

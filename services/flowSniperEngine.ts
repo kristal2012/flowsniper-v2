@@ -61,8 +61,16 @@ export class FlowSniperEngine {
     }
 
     private async run() {
-        const symbols = ['POLUSDT', 'WMATICUSDT', 'ETHUSDT', 'BTCUSDT', 'USDCUSDT', 'DAIUSDT', 'LINKUSDT', 'UNIUSDT', 'GHSTUSDT', 'LDOUSDT', 'GRTUSDT']; // High liquidity pairs only
-        const dexes = ['QuickSwap [Active]', 'QuickSwap [Aggregator]'];
+        const symbols = ['POLUSDT', 'ETHUSDT', 'BTCUSDT', 'MATICUSDT', 'USDCUSDT', 'DAIUSDT', 'LINKUSDT', 'UNIUSDT', 'AAVEUSDT', 'QUICKUSDT', 'SOLUSDT']; // Optimized set
+        const dexes = ['QuickSwap [V2]', 'Uniswap [V3]'];
+
+        // Helper for Promise with Timeout
+        const withTimeout = (promise: Promise<any>, ms: number, label: string) => {
+            let timeout = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error(`Timeout: ${label} (${ms}ms)`)), ms);
+            });
+            return Promise.race([promise, timeout]);
+        };
 
         // Token Addresses for Polygon
         const TOKENS: { [key: string]: string } = {
@@ -135,7 +143,7 @@ export class FlowSniperEngine {
                 let searchTag = randomSymbol.replace('USDT', '');
                 if (searchTag === 'BTC') searchTag = 'WBTC';
                 if (searchTag === 'ETH') searchTag = 'WETH';
-                if (searchTag === 'POL') searchTag = 'WMATIC';
+                if (searchTag === 'POL' || searchTag === 'MATIC') searchTag = 'WMATIC';
 
                 const tokenOut = TOKENS[searchTag];
 
@@ -164,10 +172,10 @@ export class FlowSniperEngine {
                     // Step A: How much token do we get for our USDT?
                     console.log(`[Strategy] Checking ${searchTag}: Fetching QUOTES (V2 vs V3) for ${this.tradeAmount} USDT...`);
 
-                    // Parallel Fetch for Speed
+                    // Parallel Fetch for Speed with 5s Timeout
                     const [v2Amounts, v3Amount] = await Promise.all([
-                        blockchainService.getAmountsOut(this.tradeAmount, [tokenIn, tokenOut]),
-                        blockchainService.getQuoteV3(tokenIn, tokenOut, this.tradeAmount)
+                        withTimeout(blockchainService.getAmountsOut(this.tradeAmount, [tokenIn, tokenOut]), 5000, 'QS_V2_QUOTE').catch(() => []),
+                        withTimeout(blockchainService.getQuoteV3(tokenIn, tokenOut, this.tradeAmount), 5000, 'UNI_V3_QUOTE').catch(() => "0")
                     ]);
 
                     let bestAmountOut = 0;
@@ -219,11 +227,12 @@ export class FlowSniperEngine {
                         } else if (grossProfit > 0) {
                             // Provide feedback: Trade found but gas/profit too low
                             const spreadPct = (grossProfit / Number(this.tradeAmount)) * 100;
+                            console.log(`[Strategy] 🟡 ${searchTag}: Spread ${spreadPct.toFixed(3)}% found, but Gas ($${totalGas.toFixed(2)}) consumes profit.`);
                             this.onLog({
-                                id: 'pulse-' + Date.now(),
+                                id: 'pulse-dist-' + Date.now(),
                                 timestamp: new Date().toLocaleTimeString(),
                                 type: 'SCAN_PULSE',
-                                pair: `${searchTag}: Spread ${spreadPct.toFixed(2)}% em ${bestRoute}. Inviável por Gás ($${totalGas.toFixed(2)}).`,
+                                pair: `${searchTag}: Spread ${spreadPct.toFixed(2)}% detectado. Inviável por Gás ($${totalGas.toFixed(2)}).`,
                                 profit: 0,
                                 status: 'SUCCESS',
                                 hash: ''
