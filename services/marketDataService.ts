@@ -1,4 +1,7 @@
 
+import { blockchainService } from './blockchainService';
+import { TOKENS } from '../types';
+
 export interface CandleData {
     time: number;
     open: number;
@@ -129,7 +132,25 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
         if (p > 0) console.log(`[MarketData] ${symbol} price fetched from CoinGecko: $${p}`);
         return p;
     } catch (cgError) {
-        console.error(`[MarketData] FATAL: All price sources failed for ${symbol}`, cgError);
-        return 0;
+        console.warn(`[MarketData] External APIs failed for ${symbol}, attempting Blockchain Fallback (Uniswap V3)...`);
+        try {
+            // Final Resort: Fetch reference price directly from Chain via Uniswap V3
+            const tokenAddress = TOKENS[normalizedSymbol.replace('USDT', '')];
+            const usdtAddress = TOKENS['USDT'];
+
+            if (tokenAddress && usdtAddress) {
+                // Fetch price for 1 token in USDT terms
+                const quote = await blockchainService.getQuoteV3(tokenAddress, usdtAddress, "1.0").catch(() => "0");
+                const p = parseFloat(quote);
+                if (p > 0) {
+                    console.log(`[MarketData] ${symbol} price fetched from BLOCKCHAIN (V3): $${p}`);
+                    return p;
+                }
+            }
+            throw new Error("No blockchain quote available for " + symbol);
+        } catch (chainError) {
+            console.error(`[MarketData] FATAL: All sources (including Blockchain) failed for ${symbol}`, chainError);
+            return 0;
+        }
     }
 };

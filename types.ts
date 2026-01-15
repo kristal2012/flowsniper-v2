@@ -86,3 +86,21 @@ export interface SniperStep {
   status: 'SUCCESS' | 'EXPIRED';
   hash: string;
 }
+// Token Addresses for Polygon
+export const TOKENS: { [key: string]: string } = {
+  'USDT': '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+  'POL': '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270',
+  'WMATIC': '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270',
+  'WETH': '0x7ceb23fd6bc0ad59f6c078095c510c28342245c4',
+  'WBTC': '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6',
+  'LINK': '0x53e0bca35ec356bd5dddfebbd1fc0fd03fabad39',
+  'UNI': '0xb33EaAd8d922B1083446DC23f610c2567fB5180f',
+  'AAVE': '0xd6df30500db6e36d4336069904944f2b93652618',
+  'QUICK': '0xf28768daa238a2e52b21697284f1076f8a02c98d',
+  'USDC': '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
+  'SOL': '0x7df36098c4f923b7596ad881a70428f62c0199ba',
+  'DAI': '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063',
+  'GHST': '0x385Eeac5cB85A38A9a07A70c73e0a3271CfB4333',
+  'LDO': '0xC3C7d422809852031b44ab29EEC9F1EfF2A58756',
+  'GRT': '0x5fe2B58c01396b03525D42D55DB1a9c1c3d072EE'
+};
