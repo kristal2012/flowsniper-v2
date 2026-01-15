@@ -71,7 +71,9 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
             const response = await fetch(`${BYBIT_V5_URL}/tickers?category=linear&symbol=${s}`);
             const data = await response.json();
             if (data.retCode === 0 && data.result?.list?.length > 0) {
-                return parseFloat(data.result.list[0].lastPrice);
+                const p = parseFloat(data.result.list[0].lastPrice);
+                console.log(`[MarketData] ${s} price fetched from Bybit: $${p}`);
+                return p;
             }
         } catch (e) { /* continued */ }
     }
@@ -81,13 +83,16 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
         try {
             const response = await fetch(`/binance-api/api/v3/ticker/price?symbol=${s}`);
             const data = await response.json();
-            if (data.price) return parseFloat(data.price);
+            if (data.price) {
+                const p = parseFloat(data.price);
+                console.log(`[MarketData] ${s} price fetched from Binance: $${p}`);
+                return p;
+            }
         } catch (e) { /* continued */ }
     }
 
-    console.warn(`[MarketData] Exchanges failed for ${symbol}, trying CoinGecko...`);
+    console.warn(`[MarketData] Primary exchanges failed for ${symbol}, trying CoinGecko...`);
     try {
-        // CoinGecko fallback (no CORS issues)
         const coinGeckoMap: { [key: string]: string } = {
             'POLUSDT': 'matic-network',
             'MATICUSDT': 'matic-network',
@@ -104,16 +109,16 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
         };
         const coinId = coinGeckoMap[normalizedSymbol] || coinGeckoMap[symbol];
 
-        if (!coinId) {
-            throw new Error(`CoinGecko ID not found for ${symbol} / ${normalizedSymbol}`);
-        }
+        if (!coinId) throw new Error(`CoinGecko ID not found for ${symbol}`);
 
         const cgUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`;
         const cgResp = await fetch(cgUrl);
         const cgData = await cgResp.json();
-        return cgData[coinId]?.usd || 0;
+        const p = cgData[coinId]?.usd || 0;
+        if (p > 0) console.log(`[MarketData] ${symbol} price fetched from CoinGecko: $${p}`);
+        return p;
     } catch (cgError) {
-        console.error(`[MarketData] All price sources failed for ${symbol}`, cgError);
+        console.error(`[MarketData] FATAL: All price sources failed for ${symbol}`, cgError);
         return 0;
     }
 };

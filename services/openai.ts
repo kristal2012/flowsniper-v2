@@ -3,13 +3,13 @@ export const analyzePerformance = async (assets: any[], transactions: any[], api
   const prompt = `Analise a seguinte carteira e histórico de operações do robô FlowSniper:
   Assets: ${JSON.stringify(assets)}
   History: ${JSON.stringify(transactions)}
-  Forneça uma análise de mercado profissional e concisa em Português, focando em slippage, taxas de liquidez capturadas e otimização de rotas nas DEXs da Polygon (Uniswap v3, QuickSwap). 
+  Forneça uma análise de mercado profissional e concisa em Português, focando em slippage, taxas de liquidez capturadas e otimização de rotas nas DEXs da Polygon (Uniswap v3, QuickSwap). Use um tom técnico mas acessível.
   Responda estritamente em JSON com o seguinte formato:
   {
-    "summary": "...",
-    "riskLevel": "...",
-    "recommendation": "...",
-    "suggestedStrategy": "..."
+    "summary": "Resumo executivo da análise (máximo 500 caracteres)",
+    "riskLevel": "Baixo | Médio | Alto",
+    "recommendation": "Ação recomendada imediata",
+    "suggestedStrategy": "Nome da estratégia otimizada"
   }`;
 
   try {
@@ -56,10 +56,10 @@ export const analyzePerformance = async (assets: any[], transactions: any[], api
 
     // Retornar análise de fallback em caso de erro
     return {
-      summary: "⚠️ Serviço de IA temporariamente indisponível. O robô continua operando com parâmetros padrão.",
+      summary: "⚠️ Serviço de IA em modo de contingência. O robô continua monitorando o mercado e executando trades com base em parâmetros de latência e spread local.",
       riskLevel: "Médio",
-      recommendation: "Configure sua OpenAI API Key nas configurações para análises detalhadas.",
-      suggestedStrategy: "Slippage Capture"
+      recommendation: "Verifique sua chave de API OpenAI nas configurações para ativar insights preditivos.",
+      suggestedStrategy: "HFT Spread Capture"
     };
   }
 };
