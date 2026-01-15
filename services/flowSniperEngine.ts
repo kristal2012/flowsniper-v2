@@ -77,17 +77,6 @@ export class FlowSniperEngine {
         const GAS_ESTIMATE_USDT = 0.03;
 
         while (this.active) {
-            // Pulse log
-            this.onLog({
-                id: 'pulse-' + Date.now(),
-                timestamp: new Date().toLocaleTimeString(),
-                type: 'SCAN_PULSE',
-                pair: 'Scanning: Buscando distorção de preço DEX vs Global...',
-                profit: 0,
-                status: 'SUCCESS',
-                hash: ''
-            });
-
             if (this.dailyPnl <= this.maxDrawdown) {
                 this.stop();
                 break;
@@ -98,83 +87,66 @@ export class FlowSniperEngine {
                 continue;
             }
 
-            // AI Analysis is kept for UI/Metadata but no longer blocks the sniper's local price check
-
-            // 1. SELECT TARGET
-            const randomSymbol = symbols[Math.floor(Math.random() * symbols.length)];
-            const price = await fetchCurrentPrice(randomSymbol);
-
-            if (price <= 0) {
-                this.onLog({
-                    id: 'pulse-' + Date.now(),
-                    timestamp: new Date().toLocaleTimeString(),
-                    type: 'SCAN_PULSE',
-                    pair: `SCAN: Cotação de ${randomSymbol} falhou. Fallback On-Chain [v4.1.6.1]`,
-                    profit: 0,
-                    status: 'FAILED',
-                    hash: ''
-                });
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                continue;
+            // 1. SCAN BATCH
+            const batchSize = 3;
+            const batchSymbols = [];
+            for (let i = 0; i < batchSize; i++) {
+                batchSymbols.push(symbols[Math.floor(Math.random() * symbols.length)]);
             }
 
-            if (price > 0) {
-                const selectedDex = dexes[Math.floor(Math.random() * dexes.length)];
-                const tokenIn = TOKENS['USDT'];
+            console.log(`[SniperEngine] Starting Parallel Scan for: ${batchSymbols.join(', ')}`);
 
-                // --- SYMBOL MAPPING FIX ---
-                let searchTag = randomSymbol.replace('USDT', '');
-                if (searchTag === 'BTC') searchTag = 'WBTC';
-                if (searchTag === 'ETH') searchTag = 'WETH';
-                if (searchTag === 'POL' || searchTag === 'MATIC') searchTag = 'WMATIC';
+            // Pulse log
+            this.onLog({
+                id: 'pulse-' + Date.now(),
+                timestamp: new Date().toLocaleTimeString(),
+                type: 'SCAN_PULSE',
+                pair: `Scanning (Parallel x${batchSize}): ${batchSymbols.join(', ')}`,
+                profit: 0,
+                status: 'SUCCESS',
+                hash: ''
+            });
 
-                const tokenOut = TOKENS[searchTag];
-
-                // If we don't have the address for this token on Polygon, skip it to avoid bugs
-                if (!tokenOut) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    continue;
-                }
-
-                // Using global GAS_ESTIMATE_USDT (0.03)
-
-                // --- SMART STRATEGY: PRE-FLIGHT VERIFICATION ---
-                let isProfitable = false;
-                let estimatedNetProfit = 0;
-                let buyAmountOut = "0";
-
-                // Route Optimization State
-                let bestRoute = 'QuickSwap (V2)';
-                let useV3 = false;
-                let txHash = '';
-                let buyHash = '';
-                let actualProfit = 0;
-                let successTrade = false;
-
+            await Promise.all(batchSymbols.map(async (randomSymbol) => {
                 try {
-                    // Step A: How much token do we get for our USDT?
-                    console.log(`[Strategy] Checking ${searchTag}: Fetching QUOTES (V2 vs V3) for ${this.tradeAmount} USDT...`);
+                    const price = await fetchCurrentPrice(randomSymbol);
 
-                    // Parallel Fetch for Speed with 5s Timeout
+                    if (price <= 0) {
+                        console.warn(`[SniperEngine] Skip ${randomSymbol}: No price.`);
+                        return;
+                    }
+
+                    const tokenIn = TOKENS['USDT'];
+                    let searchTag = randomSymbol.replace('USDT', '');
+                    if (searchTag === 'BTC') searchTag = 'WBTC';
+                    if (searchTag === 'ETH') searchTag = 'WETH';
+                    if (searchTag === 'POL' || searchTag === 'MATIC') searchTag = 'WMATIC';
+
+                    const tokenOut = TOKENS[searchTag];
+                    if (!tokenOut) return;
+
+                    // --- SMART STRATEGY: PRE-FLIGHT VERIFICATION ---
+                    let isProfitable = false;
+                    let estimatedNetProfit = 0;
+                    let buyAmountOut = "0";
+                    let bestRoute = 'QuickSwap (V2)';
+                    let useV3 = false;
+                    let txHash = '';
+                    let successTrade = false;
+                    let actualProfit = 0;
+
+                    // Parallel Fetch for Speed
                     const [v2Amounts, v3Amount] = await Promise.all([
-                        withTimeout(blockchainService.getAmountsOut(this.tradeAmount, [tokenIn, tokenOut]), 5000, 'QS_V2_QUOTE').catch(() => []),
-                        withTimeout(blockchainService.getQuoteV3(tokenIn, tokenOut, this.tradeAmount), 5000, 'UNI_V3_QUOTE').catch(() => "0")
+                        withTimeout(blockchainService.getAmountsOut(this.tradeAmount, [tokenIn, tokenOut]), 4000, 'v2').catch(() => []),
+                        withTimeout(blockchainService.getQuoteV3(tokenIn, tokenOut, this.tradeAmount), 4000, 'v3').catch(() => "0")
                     ]);
 
                     let bestAmountOut = 0;
-
-                    // Analyze V2
                     if (v2Amounts && v2Amounts.length >= 2) {
-                        const decimalsOut = await (blockchainService as any).getTokenDecimals(tokenOut);
-                        const v2Out = Number(v2Amounts[1]) / (10 ** decimalsOut);
-                        if (v2Out > bestAmountOut) {
-                            bestAmountOut = v2Out;
-                            bestRoute = 'QuickSwap (V2)';
-                            useV3 = false;
-                        }
+                        const dOut = await (blockchainService as any).getTokenDecimals(tokenOut);
+                        const v2Out = Number(v2Amounts[1]) / (10 ** dOut);
+                        bestAmountOut = v2Out;
                     }
-
-                    // Analyze V3
                     const v3Out = Number(v3Amount);
                     if (v3Out > bestAmountOut) {
                         bestAmountOut = v3Out;
@@ -184,38 +156,24 @@ export class FlowSniperEngine {
 
                     if (bestAmountOut > 0) {
                         buyAmountOut = bestAmountOut.toString();
-
-                        // Step B: Compare with Global Price
-                        const globalPrice = price;
-                        const globalValueUsdt = Number(buyAmountOut) * globalPrice;
-
-                        const grossProfit = globalValueUsdt - Number(this.tradeAmount);
+                        const grossProfit = (bestAmountOut * price) - Number(this.tradeAmount);
                         const totalGas = (GAS_ESTIMATE_USDT * 2);
                         estimatedNetProfit = grossProfit - totalGas;
-
                         const targetProfit = Number(this.tradeAmount) * this.minProfit;
 
-                        console.log(`[Strategy] ${searchTag} [${bestRoute}]: Buy ${buyAmountOut} tokens @ Global $${globalPrice} = $${globalValueUsdt.toFixed(4)} | Gross: $${grossProfit.toFixed(4)} | Net: $${estimatedNetProfit.toFixed(4)}`);
-
                         if (estimatedNetProfit > targetProfit) {
-                            // CIRCUIT BREAKER: Reject unrealistic profits (>20%)
                             const roi = (estimatedNetProfit / Number(this.tradeAmount)) * 100;
-                            if (roi > 20.0) {
-                                console.warn(`[Strategy] ⚠️ CIRCUIT BREAKER: Trade rejected due to unrealistic ROI (${roi.toFixed(2)}%). Likely data error.`);
-                                isProfitable = false;
-                            } else {
+                            if (roi <= 20.0) {
                                 isProfitable = true;
-                                console.log(`[Strategy] ✅ ${searchTag} IS PROFITABLE on ${bestRoute}! Executing...`);
+                                console.log(`[Strategy] ✅ ${searchTag} PROFITABLE: $${estimatedNetProfit.toFixed(4)}`);
                             }
                         } else if (grossProfit > 0) {
-                            // Provide feedback: Trade found but gas/profit too low
                             const spreadPct = (grossProfit / Number(this.tradeAmount)) * 100;
-                            console.log(`[Strategy] 🟡 ${searchTag}: Spread ${spreadPct.toFixed(3)}% found, but Gas ($${totalGas.toFixed(2)}) consumes profit.`);
                             this.onLog({
                                 id: 'pulse-dist-' + Date.now(),
                                 timestamp: new Date().toLocaleTimeString(),
                                 type: 'SCAN_PULSE',
-                                pair: `${searchTag}: Spread ${spreadPct.toFixed(2)}% detectado. Inviável por Gás ($${totalGas.toFixed(2)}).`,
+                                pair: `${searchTag}: Spread ${spreadPct.toFixed(2)}% found! Low Net (Gas/Fee).`,
                                 profit: 0,
                                 status: 'SUCCESS',
                                 hash: ''
@@ -223,130 +181,66 @@ export class FlowSniperEngine {
                         }
                     }
 
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-
-                    if (!isProfitable) {
-                        // "Smart" Logging: Show WHY we are not trading
-                        // If we found a positive gross profit but it was eaten by gas, tell the user!
-                        if (estimatedNetProfit > -1.0 && estimatedNetProfit <= 0) { // e.g. Loss up to -$1.00 (Gas dominant)
-                            const spreadPct = ((Number(buyAmountOut) * price) / Number(this.tradeAmount) - 1) * 100;
-                            if (spreadPct > 0) { // Only log if there was ANY spread
-                                console.log(`[Strategy] 🟡 ${searchTag}: Spread ${spreadPct.toFixed(3)}% found on ${bestRoute}, but Gas ($${(GAS_ESTIMATE_USDT * 2).toFixed(2)}) consumes profit. Net: $${estimatedNetProfit.toFixed(4)}.`);
-                            }
-                        }
-
-                        continue; // Strict: No profit, no trade.
-                    }
-
-                    if (this.runMode === 'REAL') {
-                        if (isProfitable) {
-                            // 1. BUY with Slippage Protection
+                    if (isProfitable) {
+                        if (this.runMode === 'REAL') {
+                            // EXECUTE REAL (Sequential/Locks handled by provider ideally, but here we just go)
                             const minBuyOut = (Number(buyAmountOut) * (1 - this.slippage)).toString();
-                            buyHash = await blockchainService.executeTrade(tokenIn, tokenOut, this.tradeAmount, true, undefined, minBuyOut, useV3);
-                            await new Promise(resolve => setTimeout(resolve, 2000));
-                        }
+                            const bHash = await blockchainService.executeTrade(tokenIn, tokenOut, this.tradeAmount, true, undefined, minBuyOut, useV3);
+                            await new Promise(r => setTimeout(r, 1000));
 
-                        // 2. SELL with Slippage Protection
-                        const activeAddr = blockchainService.getWalletAddress();
-                        const tokenBal = activeAddr ? await blockchainService.getBalance(tokenOut, activeAddr) : '0';
-
-                        if (Number(tokenBal) > 0) {
-                            // Calculate min sell out based on current market for the balance we have
-                            const currentSellAmounts = await blockchainService.getAmountsOut(tokenBal, [tokenOut, tokenIn]);
-                            const expectedUsdtBack = Number(currentSellAmounts[1]) / (10 ** 6);
-                            const minUsdtOut = (expectedUsdtBack * (1 - this.slippage)).toString();
-
-                            txHash = await blockchainService.executeTrade(tokenOut, tokenIn, tokenBal, true, undefined, minUsdtOut);
-
-                            // Calculate actual profit (approximate for UI)
-                            actualProfit = expectedUsdtBack - Number(this.tradeAmount) - GAS_ESTIMATE_USDT;
-                            successTrade = true;
+                            const activeAddr = blockchainService.getWalletAddress();
+                            const tokenBal = activeAddr ? await blockchainService.getBalance(tokenOut, activeAddr) : '0';
+                            if (Number(tokenBal) > 0) {
+                                const currentSellAmounts = await blockchainService.getAmountsOut(tokenBal, [tokenOut, tokenIn]);
+                                const expectedUsdtBack = Number(currentSellAmounts[1]) / (10 ** 6);
+                                const minUsdtOut = (expectedUsdtBack * (1 - this.slippage)).toString();
+                                txHash = await blockchainService.executeTrade(tokenOut, tokenIn, tokenBal, true, undefined, minUsdtOut);
+                                actualProfit = expectedUsdtBack - Number(this.tradeAmount) - GAS_ESTIMATE_USDT;
+                                successTrade = true;
+                            }
                         } else {
-                            txHash = buyHash;
-                            actualProfit = -0.1; // Failed to buy enough?
+                            txHash = '0xSIM_' + Math.random().toString(16).substr(2, 10);
+                            actualProfit = estimatedNetProfit;
                         }
 
-                    } else {
-                        // DEMO MODE
-                        txHash = '0xSIM_' + Math.random().toString(16).substr(2, 10);
-                        actualProfit = isProfitable ? estimatedNetProfit : (Math.random() * -0.05);
-                    }
-                } catch (err: any) {
-                    this.onLog({
-                        id: 'err-' + Date.now(),
-                        timestamp: new Date().toLocaleTimeString(),
-                        type: 'LIQUIDITY_SCAN',
-                        pair: `SAFE SKIP: ${err.message}`,
-                        profit: 0,
-                        status: 'FAILED',
-                        hash: ''
-                    });
-                    continue;
-                }
+                        this.dailyPnl += actualProfit;
+                        if (this.runMode === 'DEMO') {
+                            this.totalBalance += actualProfit;
+                            this.gasBalance -= 0.05;
+                            if (this.onGasUpdate) this.onGasUpdate(this.gasBalance);
+                            if (this.onBalanceUpdate) this.onBalanceUpdate(this.totalBalance);
+                        }
 
-                this.dailyPnl += actualProfit;
-                this.dailyPnl += actualProfit;
-                if (this.runMode === 'DEMO') {
-                    this.totalBalance += actualProfit;
+                        this.onLog({
+                            id: Math.random().toString(36).substr(2, 9),
+                            timestamp: new Date().toLocaleTimeString(),
+                            type: 'ROUTE_OPTIMIZATION',
+                            pair: `${searchTag}/USDT (${bestRoute})`,
+                            profit: actualProfit,
+                            status: 'SUCCESS',
+                            hash: txHash
+                        });
 
-                    // SIMULATE GAS CONSUMPTION
-                    // In real mode, the blockchain deducts native token.
-                    // In demo mode, we must manually reduce the gas balance to show reality.
-                    if (actualProfit !== 0 || txHash.startsWith('0xSIM')) {
-                        // Approx 0.03 USDT worth of POL per trade
-                        // Assuming 1 POL ~ 0.40 USDT -> 0.03 USDT is ~0.075 POL
-                        // Let's use a fixed " Gas units" approach
-                        this.gasBalance -= 0.05; // 0.05 POL per trade
-                        if (this.onGasUpdate) this.onGasUpdate(this.gasBalance);
-                    }
-
-                    if (this.onBalanceUpdate) this.onBalanceUpdate(this.totalBalance);
-                }
-
-                this.onLog({
-                    id: Math.random().toString(36).substr(2, 9),
-                    timestamp: new Date().toLocaleTimeString(),
-                    type: isProfitable ? 'ROUTE_OPTIMIZATION' : 'LIQUIDITY_SCAN',
-                    pair: `${randomSymbol.replace('USDT', '')}/USDT (${bestRoute})`,
-                    profit: actualProfit,
-                    status: 'SUCCESS',
-                    hash: txHash
-                });
-
-                // --- AUTO CONSOLIDATION LOGIC ---
-                if (this.runMode === 'REAL' && successTrade && this.consolidationThreshold > 0) {
-                    try {
-                        const opAddr = blockchainService.getWalletAddress();
-                        const pvt = localStorage.getItem('fs_private_key');
-                        const ownerAddr = pvt ? new ethers.Wallet(pvt).address : null;
-
-                        // We need the owner address to transfer to. If not in localStorage, we can't do it.
-                        if (opAddr && ownerAddr && opAddr.toLowerCase() !== ownerAddr.toLowerCase()) {
-                            const usdtBal = await blockchainService.getBalance(TOKENS['USDT'], opAddr);
-
-                            if (Number(usdtBal) >= this.consolidationThreshold) {
-                                console.log(`[Consolidate] Threshold reached (${usdtBal} >= ${this.consolidationThreshold}). Transferring to Owner...`);
-                                this.onLog({
-                                    id: 'consolidate-' + Date.now(),
-                                    timestamp: new Date().toLocaleTimeString(),
-                                    type: 'ASSET_CONSOLIDATION',
-                                    pair: `Auto-Consolidating ${usdtBal} USDT...`,
-                                    profit: 0,
-                                    status: 'SUCCESS',
-                                    hash: ''
-                                });
-
-                                const transferHash = await blockchainService.transferTokens(TOKENS['USDT'], ownerAddr, usdtBal, opAddr);
-                                console.log(`[Consolidate] Success! Tx: ${transferHash}`);
+                        // Consolidation
+                        if (this.runMode === 'REAL' && successTrade && this.consolidationThreshold > 0) {
+                            const opAddr = blockchainService.getWalletAddress();
+                            const pvt = localStorage.getItem('fs_private_key');
+                            const ownerAddr = pvt ? new ethers.Wallet(pvt).address : null;
+                            if (opAddr && ownerAddr && opAddr.toLowerCase() !== ownerAddr.toLowerCase()) {
+                                const usdtBal = await blockchainService.getBalance(TOKENS['USDT'], opAddr);
+                                if (Number(usdtBal) >= this.consolidationThreshold) {
+                                    const transferHash = await blockchainService.transferTokens(TOKENS['USDT'], ownerAddr, usdtBal, opAddr);
+                                    this.onLog({ id: 'cons-' + Date.now(), timestamp: new Date().toLocaleTimeString(), type: 'ASSET_CONSOLIDATION', pair: `Consolidated ${usdtBal} USDT`, profit: 0, status: 'SUCCESS', hash: transferHash });
+                                }
                             }
                         }
-                    } catch (e) {
-                        console.error("[Consolidate] Auto-transfer failed", e);
                     }
+                } catch (e: any) {
+                    console.error(`[ScanBatch] Error for ${randomSymbol}:`, e.message);
                 }
-            }
+            }));
 
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
     }
 
