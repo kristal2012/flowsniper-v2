@@ -72,10 +72,20 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
     // List of symbol variations to try
     const candidates = [normalizedSymbol];
     if (symbol !== normalizedSymbol) candidates.push(symbol);
-    if (symbol.includes('POL') && !candidates.includes('MATICUSDT')) candidates.push(symbol.replace('POL', 'MATIC'));
-    if (symbol.includes('MATIC') && !candidates.includes('POLUSDT')) candidates.push(symbol.replace('MATIC', 'POL'));
 
-    // 1. Try Bybit
+    // 0. Try Serverless Proxy (Reliable, No CORS)
+    try {
+        const resp = await withTimeout(
+            fetch(`/api/price?symbol=${normalizedSymbol}`).then(r => r.json()),
+            6000
+        );
+        if (resp.price > 0) {
+            console.log(`[MarketData] ${normalizedSymbol} price fetched from SERVER PROXY (${resp.source}): $${resp.price}`);
+            return resp.price;
+        }
+    } catch (e) { }
+
+    // 1. Try Bybit (Direct - Browser Fallback)
     for (const s of candidates) {
         try {
             const data = await withTimeout(
