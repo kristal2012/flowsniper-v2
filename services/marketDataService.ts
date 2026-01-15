@@ -73,17 +73,21 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
     const candidates = [normalizedSymbol];
     if (symbol !== normalizedSymbol) candidates.push(symbol);
 
-    // 0. Try Serverless Proxy (Reliable, No CORS)
+    // 0. Try Serverless Proxy (Reliable, No CORS) [v4.1.7]
     try {
         const resp = await withTimeout(
             fetch(`/api/price?symbol=${normalizedSymbol}`).then(r => r.json()),
             6000
         );
-        if (resp.price > 0) {
-            console.log(`[MarketData] ${normalizedSymbol} price fetched from SERVER PROXY (${resp.source}): $${resp.price}`);
+        if (resp && resp.price > 0) {
+            console.log(`[MarketData] ${normalizedSymbol} price fetched from SERVER PROXY (${resp.source}): $${resp.price} [v4.1.7]`);
             return resp.price;
+        } else {
+            console.warn(`[MarketData] Proxy returned no price for ${normalizedSymbol}.`);
         }
-    } catch (e) { }
+    } catch (e: any) {
+        console.error(`[MarketData] Proxy Exception:`, e.message);
+    }
 
     // 1. Try Bybit (Direct - Browser Fallback)
     for (const s of candidates) {
