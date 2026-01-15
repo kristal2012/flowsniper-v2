@@ -131,25 +131,33 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
         const p = cgData[coinId]?.usd || 0;
         if (p > 0) console.log(`[MarketData] ${symbol} price fetched from CoinGecko: $${p}`);
         return p;
-    } catch (cgError) {
-        console.warn(`[MarketData] External APIs failed for ${symbol}, attempting Blockchain Fallback (Uniswap V3)...`);
+    } catch (cgError: any) {
+        const errorMsg = cgError.message || "Block";
+        console.warn(`[MarketData] External APIs failed (${errorMsg}) for ${symbol}, attempting Blockchain Fallback (Uniswap V3)...`);
         try {
             // Final Resort: Fetch reference price directly from Chain via Uniswap V3
-            const tokenAddress = TOKENS[normalizedSymbol.replace('USDT', '')];
+            const searchPart = normalizedSymbol.replace('USDT', '').replace('USDC', '').replace('ETH', '').replace('BTC', '');
+            let tokenKey = searchPart;
+            if (tokenKey === 'W' || tokenKey === '') tokenKey = 'WMATIC'; // Edge case cleanup
+
+            const tokenAddress = TOKENS[tokenKey] || TOKENS[searchPart];
             const usdtAddress = TOKENS['USDT'];
+
+            console.log(`[MarketData] Fallback Search: Symbol=${symbol} -> TokenKey=${tokenKey} -> Address=${tokenAddress}`);
 
             if (tokenAddress && usdtAddress) {
                 // Fetch price for 1 token in USDT terms
-                const quote = await blockchainService.getQuoteV3(tokenAddress, usdtAddress, "1.0").catch(() => "0");
+                const quote = await blockchainService.getQuoteV3(tokenAddress, usdtAddress, "1.0");
                 const p = parseFloat(quote);
                 if (p > 0) {
                     console.log(`[MarketData] ${symbol} price fetched from BLOCKCHAIN (V3): $${p}`);
                     return p;
                 }
             }
-            throw new Error("No blockchain quote available for " + symbol);
-        } catch (chainError) {
-            console.error(`[MarketData] FATAL: All sources (including Blockchain) failed for ${symbol}`, chainError);
+            console.error(`[MarketData] Fallback failed: Token address not found for key ${tokenKey}. Check types.ts TOKENS.`);
+            return 0;
+        } catch (chainError: any) {
+            console.error(`[MarketData] FATAL: All sources failed for ${symbol}. Chain Error: ${chainError.message}`);
             return 0;
         }
     }
