@@ -41,9 +41,10 @@ export default async function handler(req, res) {
     // 3. Try CoinGecko ID Map as last resort (Node side)
     try {
         const cgMap = {
-            'POLUSDT': 'matic-network', 'MATICUSDT': 'matic-network', 'ETHUSDT': 'ethereum',
+            'POLUSDT': 'matic-network', 'MATICUSDT': 'matic-network', 'WMATICUSDT': 'matic-network', 'ETHUSDT': 'ethereum',
             'BTCUSDT': 'bitcoin', 'USDCUSDT': 'usd-coin', 'DAIUSDT': 'dai', 'LINKUSDT': 'chainlink',
-            'UNIUSDT': 'uniswap', 'LDOUSDT': 'lido-dao', 'SOLUSDT': 'solana'
+            'UNIUSDT': 'uniswap', 'LDOUSDT': 'lido-dao', 'SOLUSDT': 'solana', 'GHSTUSDT': 'aavegotchi',
+            'GRTUSDT': 'the-graph', 'AAVEUSDT': 'aave', 'QUICKUSDT': 'quick'
         };
         const coinId = cgMap[s];
         if (coinId) {
