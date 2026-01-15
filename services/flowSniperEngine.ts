@@ -109,9 +109,9 @@ export class FlowSniperEngine {
                     id: 'pulse-' + Date.now(),
                     timestamp: new Date().toLocaleTimeString(),
                     type: 'SCAN_PULSE',
-                    pair: `SCAN: Erro ao obter cotação de ${randomSymbol} (API Bloqueada/CORS).`,
+                    pair: `SCAN: Cotação de ${randomSymbol} falhou. Fallback On-Chain [v4.1.6.1]`,
                     profit: 0,
-                    status: 'SUCCESS',
+                    status: 'FAILED',
                     hash: ''
                 });
                 await new Promise(resolve => setTimeout(resolve, 3000));
