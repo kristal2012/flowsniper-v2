@@ -180,6 +180,14 @@ const App: React.FC = () => {
   const [demoBalance, setDemoBalance] = useState<number>(1000); // Demo starts with $1000
   const [demoGasBalance, setDemoGasBalance] = useState<number>(20); // Demo starts with 20 POL
   const [sniperLogs, setSniperLogs] = useState<SniperStep[]>([]);
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll logs
+  useEffect(() => {
+    if (logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [sniperLogs]);
 
   // Estados Financeiros
   const [dailyProfit, setDailyProfit] = useState(0);
@@ -913,6 +921,7 @@ const App: React.FC = () => {
                         </div>
                       </div>
                     ))}
+                    <div ref={logEndRef} />
                   </div>
                 </div>
               )}
