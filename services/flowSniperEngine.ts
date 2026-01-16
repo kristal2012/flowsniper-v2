@@ -75,8 +75,8 @@ export class FlowSniperEngine {
             return Promise.race([promise, timeout]);
         };
 
-        const GAS_ESTIMATE_USDT = 0.02;
-        console.log("[SniperEngine] Motor v4.3.1 Operação Trade Forçado Iniciada.");
+        const GAS_ESTIMATE_USDT = 0.005; // Reduced from 0.02 to be ultra-sensitive
+        console.log("[SniperEngine] Motor v4.3.3 Extrema Sensibilidade Ativada.");
 
         while (this.active) {
             try {
@@ -179,27 +179,30 @@ export class FlowSniperEngine {
 
                         const targetProfit = Number(this.tradeAmount) * this.minProfit;
 
-                        // NEAR-PROFIT LOGGING: Visible feedback for spreads > $0.01
-                        if (bestProfit > 0.01) {
-                            const isNear = bestProfit >= (targetProfit * 0.7);
+                        // NEAR-PROFIT LOGGING: Visible feedback for ANY positive spread
+                        if (bestProfit > 0.001) {
+                            const isNear = bestProfit >= (targetProfit * 0.5);
                             this.onLog({
                                 id: 'diagnostic-' + Date.now() + Math.random(),
                                 timestamp: new Date().toLocaleTimeString(),
                                 type: 'SCAN_PULSE',
-                                pair: `${isNear ? '[DENTRO DO ALVO] ' : '[ALTO SPREAD] '}${randomSymbol}: Lucro $${bestProfit.toFixed(3)} | Alvo: $${targetProfit.toFixed(3)}`,
+                                pair: `${isNear ? '[DENTRO DO ALVO] ' : '[SPREAD MICRO] '}${randomSymbol}: Lucro $${bestProfit.toFixed(3)} | Alvo: $${targetProfit.toFixed(3)}`,
                                 profit: 0,
                                 status: 'SUCCESS',
                                 hash: ''
                             });
                         }
 
-                        if (bestProfit > targetProfit && bestProfit < 50.0) {
-                            const { price: cexPrice } = await fetchCurrentPrice(randomSymbol);
-                            const dexSellPrice = finalUseV3 ? v2SellPrice : v3SellPrice;
+                        if (bestProfit > targetProfit && bestProfit < 100.0) {
+                            if (this.runMode === 'REAL') {
+                                const { price: cexPrice } = await fetchCurrentPrice(randomSymbol);
+                                const dexSellPrice = finalUseV3 ? v2SellPrice : v3SellPrice;
 
-                            if (cexPrice > 0 && Math.abs(dexSellPrice - cexPrice) / cexPrice > 0.15) {
-                                return;
+                                if (cexPrice > 0 && Math.abs(dexSellPrice - cexPrice) / cexPrice > 0.15) {
+                                    return;
+                                }
                             }
+                            // Relaxed CEX check for DEMO mode to allow continuous flow
 
                             isProfitable = true;
                             buyAmountOut = bestBuyAmountOut;

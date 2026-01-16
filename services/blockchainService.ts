@@ -350,8 +350,11 @@ export class BlockchainService {
 
             const tokenContract = this.getERC20(tokenIn, wallet);
 
-            // Gas estimation for transparency
-            const gasPrice = (await this.getProvider().getFeeData()).gasPrice || ethers.parseUnits('50', 'gwei');
+            // Gas estimation with Priority (v4.3.3)
+            const feeData = await provider.getFeeData();
+            const baseGasPrice = feeData.gasPrice || ethers.parseUnits('50', 'gwei');
+            // Add 50% premium for extreme priority to win against other bots
+            const priorityGasPrice = baseGasPrice * 15n / 10n;
 
             if (useV3) {
                 // UNISWAP V3 EXECUTION
@@ -374,10 +377,10 @@ export class BlockchainService {
                     sqrtPriceLimitX96: 0
                 };
 
-                console.log(`[TradeExecutor] Sending V3 Swap...`);
+                console.log(`[TradeExecutor] Sending V3 Swap (Priority Gas)...`);
                 const tx = await routerV3.exactInputSingle(params, {
-                    gasLimit: 400000, // Slightly higher for V3
-                    gasPrice: gasPrice * 12n / 10n
+                    gasLimit: 500000,
+                    gasPrice: priorityGasPrice
                 });
                 console.log(`[TradeExecutor] V3 Tx based: ${tx.hash}`);
                 return tx.hash;
@@ -396,7 +399,7 @@ export class BlockchainService {
                 const path = [tokenIn, tokenOut];
                 const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 mins
 
-                console.log(`[TradeExecutor] Sending Swap Tx... (Min Out: ${amountOutMin})`);
+                console.log(`[TradeExecutor] Sending Swap Tx (Priority Gas)...`);
                 const tx = await router.swapExactTokensForTokens(
                     amountWei,
                     amountOutMinWei,
@@ -404,8 +407,8 @@ export class BlockchainService {
                     wallet.address,
                     deadline,
                     {
-                        gasLimit: 300000, // Standard swap gas limit
-                        gasPrice: gasPrice * 12n / 10n // 20% bump for speed
+                        gasLimit: 350000,
+                        gasPrice: priorityGasPrice
                     }
                 );
                 console.log(`[TradeExecutor] Tx Sent: ${tx.hash}`);
