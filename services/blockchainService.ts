@@ -216,7 +216,7 @@ export class BlockchainService {
     }
 
     // NEW: Uniswap V3 Quoter (Multi-Tier)
-    public async getQuoteV3(tokenIn: string, tokenOut: string, amountIn: string): Promise<string> {
+    public async getQuoteV3(tokenIn: string, tokenOut: string, amountIn: string): Promise<{ quote: string, fee: number }> {
         try {
             const quoter = this.getV3Quoter();
 
@@ -253,10 +253,10 @@ export class BlockchainService {
 
             const formatted = ethers.formatUnits(bestQuoteWei, decimalsOut);
             console.log(`[getQuoteV3] Best Quote: ${amountIn} -> ${formatted} (Fee: ${bestFee})`);
-            return formatted; // Ideally we should return fee too, but for now we optimize for price
+            return { quote: formatted, fee: bestFee };
         } catch (e: any) {
             console.error("[getQuoteV3] Failed", e);
-            return "0";
+            return { quote: "0", fee: 3000 };
         }
     }
 
@@ -296,7 +296,7 @@ export class BlockchainService {
     }
 
     // CORE MODULE: TradeExecutor (Real & Sim)
-    async executeTrade(tokenIn: string, tokenOut: string, amountIn: string, isReal: boolean, fromAddress?: string, amountOutMin: string = "0", useV3: boolean = false): Promise<string> {
+    async executeTrade(tokenIn: string, tokenOut: string, amountIn: string, isReal: boolean, fromAddress?: string, amountOutMin: string = "0", useV3: boolean = false, v3Fee: number = 3000): Promise<string> {
         console.log(`[TradeExecutor] Executing ${isReal ? 'REAL' : 'SIMULATED'} trade (${useV3 ? 'Uniswap V3' : 'QuickSwap V2'}): ${amountIn} tokens`);
 
         if (!isReal) {
@@ -366,7 +366,7 @@ export class BlockchainService {
                 const params = {
                     tokenIn: tokenIn,
                     tokenOut: tokenOut,
-                    fee: 3000, // Hardcoded to 0.3% pool for now
+                    fee: v3Fee,
                     recipient: wallet.address,
                     deadline: Math.floor(Date.now() / 1000) + 60 * 20,
                     amountIn: amountWei,

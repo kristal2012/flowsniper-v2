@@ -61,7 +61,12 @@ export class FlowSniperEngine {
     }
 
     private async run() {
-        const symbols = ['POLUSDT', 'WBTCUSDT', 'WETHUSDT', 'USDCUSDT', 'DAIUSDT', 'ETHUSDT', 'MATICUSDT', 'SOLUSDT', 'LINKUSDT', 'UNIUSDT', 'AAVEUSDT', 'QUICKUSDT'];
+        const symbols = [
+            'POLUSDT', 'WBTCUSDT', 'WETHUSDT', 'USDCUSDT', 'DAIUSDT',
+            'ETHUSDT', 'MATICUSDT', 'SOLUSDT', 'LINKUSDT', 'UNIUSDT',
+            'AAVEUSDT', 'QUICKUSDT', 'SANDUSDT', 'CRVUSDT', 'SUSHIUSDT',
+            'BALUSDT', 'SNXUSDT', 'MKRUSDT', 'GRTUSDT', 'LDOUSDT', 'GHSTUSDT'
+        ];
 
         const withTimeout = (promise: Promise<any>, ms: number, label: string) => {
             let timeout = new Promise((_, reject) => {
@@ -71,7 +76,7 @@ export class FlowSniperEngine {
         };
 
         const GAS_ESTIMATE_USDT = 0.02;
-        console.log("[SniperEngine] Motor v4.3.0 Agilidade Estrutural Iniciada.");
+        console.log("[SniperEngine] Motor v4.3.1 Operação Trade Forçado Iniciada.");
 
         while (this.active) {
             try {
@@ -85,8 +90,8 @@ export class FlowSniperEngine {
                     continue;
                 }
 
-                // 1. SCAN BATCH
-                const batchSize = 7;
+                // 1. SCAN BATCH (Expanded to 12 for more coverage)
+                const batchSize = 12;
                 const batchSymbols = [];
                 for (let i = 0; i < batchSize; i++) {
                     batchSymbols.push(symbols[Math.floor(Math.random() * symbols.length)]);
@@ -123,35 +128,20 @@ export class FlowSniperEngine {
                         const tokenOut = TOKENS[searchTag];
                         if (!tokenOut) return;
 
-                        // --- HIGH-SPEED CROSS-DEX STRATEGY (v4.2.0) ---
-                        // Faster time-outs to increase agility
-                        const [v2Buy, v3Buy, v2Sell, v3Sell] = await Promise.all([
-                            withTimeout(blockchainService.getAmountsOut(this.tradeAmount, [tokenIn, tokenOut]), 1500, 'v2Buy').catch(() => []),
-                            withTimeout(blockchainService.getQuoteV3(tokenIn, tokenOut, this.tradeAmount), 2200, 'v3Buy').catch(() => "0"),
-                            withTimeout(blockchainService.getAmountsOut("1.0", [tokenOut, tokenIn]), 1500, 'v2Sell').catch(() => []),
-                            withTimeout(blockchainService.getQuoteV3(tokenOut, tokenIn, "1.0"), 2200, 'v3Sell').catch(() => "0")
+                        // --- TRADE FORÇADO STRATEGY (v4.3.1) ---
+                        const [v2Buy, v3BuyObj, v2Sell, v3SellObj] = await Promise.all([
+                            withTimeout(blockchainService.getAmountsOut(this.tradeAmount, [tokenIn, tokenOut]), 2500, 'v2Buy').catch(() => []),
+                            withTimeout(blockchainService.getQuoteV3(tokenIn, tokenOut, this.tradeAmount), 3500, 'v3Buy').catch(() => ({ quote: "0", fee: 3000 })),
+                            withTimeout(blockchainService.getAmountsOut("1.0", [tokenOut, tokenIn]), 2500, 'v2Sell').catch(() => []),
+                            withTimeout(blockchainService.getQuoteV3(tokenOut, tokenIn, "1.0"), 3500, 'v3Sell').catch(() => ({ quote: "0", fee: 3000 }))
                         ]);
 
                         const dOut = await (blockchainService as any).getTokenDecimals(tokenOut);
 
                         const v2BuyOut = v2Buy.length >= 2 ? parseFloat(ethers.formatUnits(v2Buy[1], dOut)) : 0;
-                        const v3BuyOut = parseFloat(v3Buy);
+                        const v3BuyOut = parseFloat(v3BuyObj.quote);
                         const v2SellPrice = v2Sell.length >= 2 ? parseFloat(ethers.formatUnits(v2Sell[1], 6)) : 0;
-                        const v3SellPrice = parseFloat(v3Sell);
-
-                        // --- DIAGNOSTIC PULSE (v4.3.0) ---
-                        // Only log if we have actual data to show proof of life
-                        if (v2SellPrice > 0 || v3SellPrice > 0) {
-                            this.onLog({
-                                id: 'diagnostic-' + Date.now() + Math.random(),
-                                timestamp: new Date().toLocaleTimeString(),
-                                type: 'SCAN_PULSE',
-                                pair: `Enxergando ${randomSymbol}: QW $${v2SellPrice.toFixed(4)} | V3 $${v3SellPrice.toFixed(4)}`,
-                                profit: 0,
-                                status: 'SUCCESS',
-                                hash: ''
-                            });
-                        }
+                        const v3SellPrice = parseFloat(v3SellObj.quote);
 
                         const profitA = (v2BuyOut * v3SellPrice) - Number(this.tradeAmount);
                         const profitB = (v3BuyOut * v2SellPrice) - Number(this.tradeAmount);
@@ -160,20 +150,37 @@ export class FlowSniperEngine {
                         let executionRoute = '';
                         let bestBuyAmountOut = "0";
                         let finalUseV3 = false;
+                        let bestV3Fee = 3000;
 
                         if (profitA > profitB) {
                             bestProfit = profitA - (GAS_ESTIMATE_USDT * 2);
                             executionRoute = 'QuickSwap -> V3';
                             bestBuyAmountOut = v2BuyOut.toString();
                             finalUseV3 = false;
+                            bestV3Fee = v3SellObj.fee;
                         } else {
                             bestProfit = profitB - (GAS_ESTIMATE_USDT * 2);
                             executionRoute = 'V3 -> QuickSwap';
                             bestBuyAmountOut = v3BuyOut.toString();
                             finalUseV3 = true;
+                            bestV3Fee = v3BuyObj.fee;
                         }
 
                         const targetProfit = Number(this.tradeAmount) * this.minProfit;
+
+                        // NEAR-PROFIT LOGGING: Visible feedback for even tiny spreads
+                        if (bestProfit > 0.001) {
+                            const isNear = bestProfit >= (targetProfit * 0.7);
+                            this.onLog({
+                                id: 'diagnostic-' + Date.now() + Math.random(),
+                                timestamp: new Date().toLocaleTimeString(),
+                                type: 'SCAN_PULSE',
+                                pair: `${isNear ? '[QUASE LÁ] ' : ''}${randomSymbol}: Lucro $${bestProfit.toFixed(3)} | Alvo: $${targetProfit.toFixed(3)}`,
+                                profit: 0,
+                                status: 'SUCCESS',
+                                hash: ''
+                            });
+                        }
 
                         if (bestProfit > targetProfit && bestProfit < 50.0) {
                             const { price: cexPrice } = await fetchCurrentPrice(randomSymbol);
@@ -193,13 +200,15 @@ export class FlowSniperEngine {
                         if (isProfitable) {
                             if (this.runMode === 'REAL') {
                                 const minBuyOut = (Number(bestBuyAmountOut) * (1 - this.slippage)).toString();
-                                const bHash = await blockchainService.executeTrade(tokenIn, tokenOut, this.tradeAmount, true, undefined, minBuyOut, finalUseV3);
+                                // PASS v3Fee: if finalUseV3 (Buy V3), use v3BuyObj.fee
+                                const bHash = await blockchainService.executeTrade(tokenIn, tokenOut, this.tradeAmount, true, undefined, minBuyOut, finalUseV3, finalUseV3 ? v3BuyObj.fee : 3000);
                                 await new Promise(r => setTimeout(r, 600));
 
                                 const activeAddr = blockchainService.getWalletAddress();
                                 const tokenBal = activeAddr ? await blockchainService.getBalance(tokenOut, activeAddr) : '0';
                                 if (Number(tokenBal) > 0) {
-                                    const txHash = await blockchainService.executeTrade(tokenOut, tokenIn, tokenBal, true, undefined, "0", !finalUseV3);
+                                    // PASS v3Fee: if !finalUseV3 (Sell V3), use v3SellObj.fee
+                                    const txHash = await blockchainService.executeTrade(tokenOut, tokenIn, tokenBal, true, undefined, "0", !finalUseV3, !finalUseV3 ? v3SellObj.fee : 3000);
                                     actualProfit = estimatedNetProfit;
                                     successTrade = true;
                                 }
