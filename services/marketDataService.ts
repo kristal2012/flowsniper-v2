@@ -58,7 +58,12 @@ export const fetchHistoricalData = async (symbol: string = 'POLUSDT', interval: 
     }
 };
 
-export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<number> => {
+export interface PriceResult {
+    price: number;
+    source: string;
+}
+
+export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<PriceResult> => {
     // Normalize symbols for Binance (WMATIC -> MATIC)
     const normalizedSymbol = symbol.replace('WMATIC', 'MATIC').replace('POL', 'MATIC');
 
@@ -69,27 +74,24 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
         ]);
     };
 
-    // List of symbol variations to try
-    const candidates = [normalizedSymbol];
-    if (symbol !== normalizedSymbol) candidates.push(symbol);
-
-    // 0. Try Serverless Proxy (Reliable, No CORS) [v4.1.7]
+    // 0. Try Serverless Proxy (Reliable, No CORS) [v4.1.8]
     try {
         const resp = await withTimeout(
             fetch(`/api/price?symbol=${normalizedSymbol}`).then(r => r.json()),
             6000
         );
         if (resp && resp.price > 0) {
-            console.log(`[MarketData] ${normalizedSymbol} price fetched from SERVER PROXY (${resp.source}): $${resp.price} [v4.1.7]`);
-            return resp.price;
-        } else {
-            console.warn(`[MarketData] Proxy returned no price for ${normalizedSymbol}.`);
+            console.log(`[MarketData] ${normalizedSymbol} price fetched from SERVER PROXY (${resp.source}): $${resp.price} [v4.1.8]`);
+            return { price: resp.price, source: `proxy-${resp.source}` };
         }
     } catch (e: any) {
         console.error(`[MarketData] Proxy Exception:`, e.message);
     }
 
-    // 1. Try Bybit (Direct - Browser Fallback)
+    // 1. Try Direct Fallbacks (Bybit/Binance) - Might be blocked by CORS but worth a shot
+    const candidates = [normalizedSymbol];
+    if (symbol !== normalizedSymbol) candidates.push(symbol);
+
     for (const s of candidates) {
         try {
             const data = await withTimeout(
@@ -98,81 +100,42 @@ export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<num
             );
             if (data.retCode === 0 && data.result?.list?.length > 0) {
                 const p = parseFloat(data.result.list[0].lastPrice);
-                console.log(`[MarketData] ${s} price fetched from Bybit: $${p}`);
-                return p;
+                return { price: p, source: 'bybit-direct' };
             }
-        } catch (e) { /* continued */ }
+        } catch (e) { }
     }
 
-    // 2. Try Binance
-    for (const s of candidates) {
-        try {
-            const data = await withTimeout(
-                fetch(`/binance-api/api/v3/ticker/price?symbol=${s}`).then(r => r.json()),
-                5000
-            );
-            if (data.price) {
-                const p = parseFloat(data.price);
-                console.log(`[MarketData] ${s} price fetched from Binance: $${p}`);
-                return p;
-            }
-        } catch (e) { /* continued */ }
-    }
-
-    console.warn(`[MarketData] Primary exchanges failed for ${symbol}, trying CoinGecko...`);
+    // ... (Blockchain Fallback stays same but returns source: 'blockchain')
     try {
         const coinGeckoMap: { [key: string]: string } = {
-            'POLUSDT': 'matic-network',
-            'MATICUSDT': 'matic-network',
-            'WMATICUSDT': 'matic-network',
-            'ETHUSDT': 'ethereum',
-            'BTCUSDT': 'bitcoin',
-            'USDCUSDT': 'usd-coin',
-            'DAIUSDT': 'dai',
-            'LINKUSDT': 'chainlink',
-            'UNIUSDT': 'uniswap',
-            'GHSTUSDT': 'aavegotchi',
-            'LDOUSDT': 'lido-dao',
-            'GRTUSDT': 'the-graph'
+            'POLUSDT': 'matic-network', 'MATICUSDT': 'matic-network', 'WMATICUSDT': 'matic-network',
+            'ETHUSDT': 'ethereum', 'BTCUSDT': 'bitcoin', 'USDCUSDT': 'usd-coin',
+            'DAIUSDT': 'dai', 'LINKUSDT': 'chainlink', 'UNIUSDT': 'uniswap',
+            'GHSTUSDT': 'aavegotchi', 'LDOUSDT': 'lido-dao', 'GRTUSDT': 'the-graph'
         };
         const coinId = coinGeckoMap[normalizedSymbol] || coinGeckoMap[symbol];
-
-        if (!coinId) throw new Error(`CoinGecko ID not found for ${symbol}`);
-
-        const cgUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`;
-        const cgResp = await fetch(cgUrl);
-        const cgData = await cgResp.json();
-        const p = cgData[coinId]?.usd || 0;
-        if (p > 0) console.log(`[MarketData] ${symbol} price fetched from CoinGecko: $${p}`);
-        return p;
-    } catch (cgError: any) {
-        const errorMsg = cgError.message || "Block";
-        console.warn(`[MarketData] External APIs failed (${errorMsg}) for ${symbol}, attempting Blockchain Fallback (Uniswap V3)...`);
-        try {
-            // Final Resort: Fetch reference price directly from Chain via Uniswap V3
-            const searchPart = normalizedSymbol.replace('USDT', '').replace('USDC', '').replace('ETH', '').replace('BTC', '');
-            let tokenKey = searchPart;
-            if (tokenKey === 'W' || tokenKey === '') tokenKey = 'WMATIC'; // Edge case cleanup
-
-            const tokenAddress = TOKENS[tokenKey] || TOKENS[searchPart];
-            const usdtAddress = TOKENS['USDT'];
-
-            console.log(`[MarketData] Fallback Search: Symbol=${symbol} -> TokenKey=${tokenKey} -> Address=${tokenAddress}`);
-
-            if (tokenAddress && usdtAddress) {
-                // Fetch price for 1 token in USDT terms
-                const quote = await blockchainService.getQuoteV3(tokenAddress, usdtAddress, "1.0");
-                const p = parseFloat(quote);
-                if (p > 0) {
-                    console.log(`[MarketData] ${symbol} price fetched from BLOCKCHAIN (V3): $${p}`);
-                    return p;
-                }
-            }
-            console.error(`[MarketData] Fallback failed: Token address not found for key ${tokenKey}. Check types.ts TOKENS.`);
-            return 0;
-        } catch (chainError: any) {
-            console.error(`[MarketData] FATAL: All sources failed for ${symbol}. Chain Error: ${chainError.message}`);
-            return 0;
+        if (coinId) {
+            const cgResp = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
+            const cgData = await cgResp.json();
+            const p = cgData[coinId]?.usd || 0;
+            if (p > 0) return { price: p, source: 'coingecko-direct' };
         }
-    }
+    } catch (e) { }
+
+    // Final Blockchain Resort
+    try {
+        const searchPart = normalizedSymbol.replace('USDT', '').replace('USDC', '').replace('ETH', '').replace('BTC', '');
+        let tokenKey = searchPart;
+        if (tokenKey === 'W' || tokenKey === '') tokenKey = 'WMATIC';
+        const tokenAddress = TOKENS[tokenKey] || TOKENS[searchPart];
+        const usdtAddress = TOKENS['USDT'];
+
+        if (tokenAddress && usdtAddress) {
+            const quote = await blockchainService.getQuoteV3(tokenAddress, usdtAddress, "1.0");
+            const p = parseFloat(quote);
+            if (p > 0) return { price: p, source: 'blockchain' };
+        }
+    } catch (e) { }
+
+    return { price: 0, source: 'failed' };
 };

@@ -1,6 +1,6 @@
 
 import { FlowStep, FlowOperation, TOKENS } from '../types';
-import { fetchCurrentPrice } from './marketDataService';
+import { fetchCurrentPrice, PriceResult } from './marketDataService';
 import { blockchainService } from './blockchainService';
 import { ethers } from 'ethers';
 
@@ -109,11 +109,16 @@ export class FlowSniperEngine {
 
             await Promise.all(batchSymbols.map(async (randomSymbol) => {
                 try {
-                    const price = await fetchCurrentPrice(randomSymbol);
+                    const { price, source } = await fetchCurrentPrice(randomSymbol);
 
                     if (price <= 0) {
                         console.warn(`[SniperEngine] Skip ${randomSymbol}: No price.`);
                         return;
+                    }
+
+                    // Log Source for user visibility
+                    if (source === 'blockchain') {
+                        console.log(`[SniperEngine] ${randomSymbol} using On-Chain price (Zero Spread expected).`);
                     }
 
                     const tokenIn = TOKENS['USDT'];
@@ -160,32 +165,35 @@ export class FlowSniperEngine {
                         const grossProfit = (bestAmountOut * price) - Number(this.tradeAmount);
                         const totalGas = (GAS_ESTIMATE_USDT * 2);
                         estimatedNetProfit = grossProfit - totalGas;
+                        const spreadPct = ((bestAmountOut * price / Number(this.tradeAmount)) - 1) * 100;
                         const targetProfit = Number(this.tradeAmount) * this.minProfit;
 
-                        if (estimatedNetProfit > targetProfit) {
-                            const roi = (estimatedNetProfit / Number(this.tradeAmount)) * 100;
-                            // Relaxed Circuit Breaker for higher sensitivity
-                            if (roi <= 50.0) {
-                                isProfitable = true;
-                                console.log(`[Strategy] ✅ ${searchTag} PROFITABLE: $${estimatedNetProfit.toFixed(4)}`);
-                            }
-                        } else if (grossProfit > 0) {
-                            const spreadPct = (grossProfit / Number(this.tradeAmount)) * 100;
+                        // UI LOG: Inform the user about the spread even if skipping
+                        if (spreadPct > 0.01) {
                             this.onLog({
-                                id: 'pulse-dist-' + Date.now(),
+                                id: 'spread-' + Date.now() + Math.random(),
                                 timestamp: new Date().toLocaleTimeString(),
                                 type: 'SCAN_PULSE',
-                                pair: `${searchTag}: Spread ${spreadPct.toFixed(2)}% found! Low Net (Gas/Fee).`,
+                                pair: `${randomSymbol}: Spread ${spreadPct.toFixed(2)}% | Net: $${estimatedNetProfit.toFixed(3)} [v4.1.8]`,
                                 profit: 0,
                                 status: 'SUCCESS',
                                 hash: ''
                             });
                         }
+
+                        if (estimatedNetProfit > targetProfit) {
+                            const roi = (estimatedNetProfit / Number(this.tradeAmount)) * 100;
+                            // Circuit Breaker
+                            if (roi <= 50.0) {
+                                isProfitable = true;
+                                console.log(`[Strategy] ✅ ${searchTag} PROFITABLE: $${estimatedNetProfit.toFixed(4)}`);
+                            }
+                        }
                     }
 
                     if (isProfitable) {
                         if (this.runMode === 'REAL') {
-                            // EXECUTE REAL (Sequential/Locks handled by provider ideally, but here we just go)
+                            // EXECUTE REAL
                             const minBuyOut = (Number(buyAmountOut) * (1 - this.slippage)).toString();
                             const bHash = await blockchainService.executeTrade(tokenIn, tokenOut, this.tradeAmount, true, undefined, minBuyOut, useV3);
                             await new Promise(r => setTimeout(r, 1000));
