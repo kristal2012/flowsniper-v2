@@ -53,6 +53,13 @@ export class BlockchainService {
     private operatorWallet: Wallet | null = null;
     private decimalCache: { [address: string]: number } = {};
 
+    // v4.3.0 Caches
+    private providerCache: JsonRpcProvider | null = null;
+    private v2Router: Contract | null = null;
+    private v3Quoter: Contract | null = null;
+    private v3Router: Contract | null = null;
+    private erc20Contracts: { [address: string]: Contract } = {};
+
     constructor() {
         if (typeof window !== 'undefined' && ((window as any).ethereum || (window as any).rabby)) {
             // Priority to Rabby if available, otherwise standard ethereum
@@ -144,24 +151,56 @@ export class BlockchainService {
     }
 
     private getProvider(): JsonRpcProvider {
+        if (this.providerCache) return this.providerCache;
+
         const rpc = this.getRPC();
         try {
-            // Explicitly verify if it's Alchemy and prioritize it
             if (rpc.includes('alchemy.com')) {
-                console.log("[BlockchainService] Using Alchemy Premium RPC");
+                console.log("[BlockchainService] Static Provider: Alchemy Premium");
             }
-            // Explicitly set network to 137 (Polygon) for faster initialization
-            return new JsonRpcProvider(rpc, 137, { staticNetwork: true });
+            this.providerCache = new JsonRpcProvider(rpc, 137, { staticNetwork: true });
+            return this.providerCache;
         } catch (e) {
-            console.warn("[BlockchainService] Primary RPC (Alchemy) failed, using fallback:", FALLBACK_RPCS[0]);
-            return new JsonRpcProvider(FALLBACK_RPCS[0], 137, { staticNetwork: true });
+            console.warn("[BlockchainService] RPC Fail, fallback to public");
+            this.providerCache = new JsonRpcProvider(FALLBACK_RPCS[0], 137, { staticNetwork: true });
+            return this.providerCache;
         }
+    }
+
+    private getV2Router(): any {
+        if (!this.v2Router) {
+            this.v2Router = new Contract(ROUTER_ADDRESS, ROUTER_ABI, this.getProvider());
+        }
+        return this.v2Router;
+    }
+
+    private getV3Quoter(): any {
+        if (!this.v3Quoter) {
+            this.v3Quoter = new Contract(QUOTER_V3_ADDRESS, QUOTER_ABI, this.getProvider());
+        }
+        return this.v3Quoter;
+    }
+
+    private getV3Router(signerOrProvider?: any): any {
+        const base = signerOrProvider || this.getProvider();
+        if (!this.v3Router) {
+            this.v3Router = new Contract(ROUTER_V3_ADDRESS, ROUTER_V3_ABI, base);
+        }
+        return this.v3Router;
+    }
+
+    private getERC20(address: string, signerOrProvider?: any): any {
+        const normalized = address.toLowerCase();
+        const base = signerOrProvider || this.getProvider();
+        if (!this.erc20Contracts[normalized]) {
+            this.erc20Contracts[normalized] = new Contract(normalized, ERC20_ABI, base);
+        }
+        return this.erc20Contracts[normalized];
     }
 
     public async getAmountsOut(amountIn: string, path: string[]): Promise<bigint[]> {
         try {
-            const provider = this.getProvider();
-            const router = new Contract(ROUTER_ADDRESS, ROUTER_ABI, provider);
+            const router = this.getV2Router();
 
             // Detect decimals for the first token in path
             const decimals = await this.getTokenDecimals(path[0]);
@@ -179,8 +218,7 @@ export class BlockchainService {
     // NEW: Uniswap V3 Quoter (Multi-Tier)
     public async getQuoteV3(tokenIn: string, tokenOut: string, amountIn: string): Promise<string> {
         try {
-            const provider = this.getProvider();
-            const quoter = new Contract(QUOTER_V3_ADDRESS, QUOTER_ABI, provider);
+            const quoter = this.getV3Quoter();
 
             const decimalsIn = await this.getTokenDecimals(tokenIn);
             const decimalsOut = await this.getTokenDecimals(tokenOut);
@@ -280,7 +318,7 @@ export class BlockchainService {
                 throw new Error(`Insufficient Gas (POL). Address ${wallet.address} has only ${ethers.formatEther(gasBal)} POL. Please fund it for fees.`);
             }
 
-            const router = new Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
+            const router = this.getV2Router().connect(wallet);
 
             // Robust Decimals Detection
             const decimalsIn = await this.getTokenDecimals(tokenIn);
@@ -291,7 +329,7 @@ export class BlockchainService {
             // 0. Pull funds from Owner to Operator if needed
             const ownerAddress = localStorage.getItem('fs_owner_address');
             if (this.operatorWallet && wallet.address === this.operatorWallet.address && ownerAddress) {
-                const tokenContract = new Contract(tokenIn, ERC20_ABI, wallet);
+                const tokenContract = this.getERC20(tokenIn, wallet);
                 const opBalance = await tokenContract.balanceOf(wallet.address);
 
                 if (opBalance < amountWei) {
@@ -310,7 +348,7 @@ export class BlockchainService {
                 }
             }
 
-            const tokenContract = new Contract(tokenIn, ERC20_ABI, wallet);
+            const tokenContract = this.getERC20(tokenIn, wallet);
 
             // Gas estimation for transparency
             const gasPrice = (await this.getProvider().getFeeData()).gasPrice || ethers.parseUnits('50', 'gwei');
@@ -324,7 +362,7 @@ export class BlockchainService {
                     await approveTx.wait();
                 }
 
-                const routerV3 = new Contract(ROUTER_V3_ADDRESS, ROUTER_V3_ABI, wallet);
+                const routerV3 = this.getV3Router(wallet);
                 const params = {
                     tokenIn: tokenIn,
                     tokenOut: tokenOut,
@@ -396,7 +434,7 @@ export class BlockchainService {
         if (!wallet) throw new Error("Private Key required for Gas Recharge");
 
         try {
-            const router = new Contract(ROUTER_ADDRESS, ROUTER_ABI, wallet);
+            const router = this.getV2Router().connect(wallet);
             const usdtAddr = '0xc2132d05d31c914a87c6611c10748aeb04b58e8f';
             const wmaticAddr = '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270';
             const amountWei = ethers.parseUnits(amountUsdt, 6); // USDT has 6 decimals
@@ -404,7 +442,7 @@ export class BlockchainService {
             // 0. Pull USDT from Owner if needed
             const ownerAddress = localStorage.getItem('fs_owner_address');
             if (this.operatorWallet && wallet.address === this.operatorWallet.address && ownerAddress) {
-                const tokenContract = new Contract(usdtAddr, ERC20_ABI, wallet);
+                const tokenContract = this.getERC20(usdtAddr, wallet);
                 const opBalance = await tokenContract.balanceOf(wallet.address);
 
                 if (opBalance < amountWei) {
@@ -419,7 +457,7 @@ export class BlockchainService {
                 }
             }
 
-            const tokenContract = new Contract(usdtAddr, ERC20_ABI, wallet);
+            const tokenContract = this.getERC20(usdtAddr, wallet);
 
             // Approve if needed
             const allowance = await tokenContract.allowance(wallet.address, ROUTER_ADDRESS);
@@ -466,7 +504,7 @@ export class BlockchainService {
                 await tx.wait();
                 return tx.hash;
             } else {
-                const tokenContract = new Contract(tokenAddress, ERC20_ABI, wallet);
+                const tokenContract = this.getERC20(tokenAddress, wallet);
                 console.log(`[Consolidation] Sending ${amount} tokens (${tokenAddress}) to ${to}...`);
                 const tx = await tokenContract.transfer(to, amountWei);
                 await tx.wait();
@@ -506,8 +544,7 @@ export class BlockchainService {
 
         // Contract call fallback
         try {
-            const provider = this.getProvider();
-            const contract = new Contract(tokenAddress, ["function decimals() view returns (uint8)"], provider);
+            const contract = this.getERC20(tokenAddress);
             const d = await contract.decimals();
             this.decimalCache[normalized] = Number(d);
             return Number(d);
@@ -541,7 +578,7 @@ export class BlockchainService {
 
             // ERC20 Tokens
             const normalizedToken = ethers.getAddress(tokenAddress);
-            const contract = new Contract(normalizedToken, ERC20_ABI, provider);
+            const contract = this.getERC20(normalizedToken);
             let decimals = await this.getTokenDecimals(normalizedToken);
             const balance = await contract.balanceOf(normalizedAddress);
 

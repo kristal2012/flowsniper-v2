@@ -71,7 +71,7 @@ export class FlowSniperEngine {
         };
 
         const GAS_ESTIMATE_USDT = 0.02;
-        console.log("[SniperEngine] Motor v4.2.0 Ultra-Sensitive Iniciado.");
+        console.log("[SniperEngine] Motor v4.3.0 Agilidade Estrutural Iniciada.");
 
         while (this.active) {
             try {
@@ -139,6 +139,20 @@ export class FlowSniperEngine {
                         const v2SellPrice = v2Sell.length >= 2 ? parseFloat(ethers.formatUnits(v2Sell[1], 6)) : 0;
                         const v3SellPrice = parseFloat(v3Sell);
 
+                        // --- DIAGNOSTIC PULSE (v4.3.0) ---
+                        // Only log if we have actual data to show proof of life
+                        if (v2SellPrice > 0 || v3SellPrice > 0) {
+                            this.onLog({
+                                id: 'diagnostic-' + Date.now() + Math.random(),
+                                timestamp: new Date().toLocaleTimeString(),
+                                type: 'SCAN_PULSE',
+                                pair: `Enxergando ${randomSymbol}: QW $${v2SellPrice.toFixed(4)} | V3 $${v3SellPrice.toFixed(4)}`,
+                                profit: 0,
+                                status: 'SUCCESS',
+                                hash: ''
+                            });
+                        }
+
                         const profitA = (v2BuyOut * v3SellPrice) - Number(this.tradeAmount);
                         const profitB = (v3BuyOut * v2SellPrice) - Number(this.tradeAmount);
 
@@ -160,19 +174,6 @@ export class FlowSniperEngine {
                         }
 
                         const targetProfit = Number(this.tradeAmount) * this.minProfit;
-
-                        // Aggressive spread logging to show activity
-                        if (bestProfit > 0.005) {
-                            this.onLog({
-                                id: 'spread-' + Date.now() + Math.random(),
-                                timestamp: new Date().toLocaleTimeString(),
-                                type: 'SCAN_PULSE',
-                                pair: `${randomSymbol}: ${executionRoute} | Net: $${bestProfit.toFixed(3)} [v4.2.0]`,
-                                profit: 0,
-                                status: 'SUCCESS',
-                                hash: ''
-                            });
-                        }
 
                         if (bestProfit > targetProfit && bestProfit < 50.0) {
                             const { price: cexPrice } = await fetchCurrentPrice(randomSymbol);
