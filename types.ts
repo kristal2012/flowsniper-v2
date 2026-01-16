@@ -110,3 +110,11 @@ export const TOKENS: { [key: string]: string } = {
   'SNX': '0x50b691079bc6a6058d46db080fc85f096701416b',
   'MKR': '0x6f74abc254582f3ef423bc110a3006d649984920'
 };
+
+export interface SwapEvent {
+  id: string;
+  timestamp: string;
+  pair: string;
+  dex: 'QuickSwap V2' | 'Uniswap V3';
+  txHash?: string;
+}

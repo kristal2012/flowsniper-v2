@@ -16,25 +16,30 @@ const ERC20_ABI = [
 const ROUTER_ABI = [
     "function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory amounts)",
     "function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory amounts)",
-    "function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)"
+    "function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)",
+    "event Sync(uint112 reserve0, uint112 reserve1)"
 ];
-
-// QuickSwap Router Address (Polygon)
-const ROUTER_ADDRESS = "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff"; // QuickSwap V2 Official Fix
-
-// Uniswap V3 Addresses (Polygon)
-const QUOTER_V3_ADDRESS = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"; // Matches QuoterV2 on some docs
-const ROUTER_V3_ADDRESS = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
 
 // Uniswap V3 Quoter ABI (Minimal)
 const QUOTER_ABI = [
-    "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut)"
+    "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut)",
+    "event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)"
 ];
 
 // Uniswap V3 Router ABI (Minimal)
 const ROUTER_V3_ABI = [
     "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) external payable returns (uint256 amountOut)"
 ];
+
+// Multicall3 ABI
+const MULTICALL_ABI = [
+    "function aggregate((address target, bytes callData)[] calls) external payable returns (uint256 blockNumber, bytes[] returnData)"
+];
+
+const ROUTER_ADDRESS = "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff";
+const QUOTER_V3_ADDRESS = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6";
+const ROUTER_V3_ADDRESS = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
+const MULTICALL_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11";
 
 const DEFAULT_RPC = 'https://polygon-mainnet.g.alchemy.com/v2/iRsg1SsPMDZZ9s5kHsRbH'; // User Alchemy RPC
 const FALLBACK_RPCS = [
@@ -55,9 +60,11 @@ export class BlockchainService {
 
     // v4.3.0 Caches
     private providerCache: JsonRpcProvider | null = null;
+    private wsProvider: any = null;
     private v2Router: Contract | null = null;
     private v3Quoter: Contract | null = null;
     private v3Router: Contract | null = null;
+    private multicall: Contract | null = null;
     private erc20Contracts: { [address: string]: Contract } = {};
 
     constructor() {
@@ -167,6 +174,27 @@ export class BlockchainService {
         }
     }
 
+    public getWebSocketProvider(): any {
+        if (this.wsProvider) return this.wsProvider;
+
+        const rpc = this.getRPC();
+        let wsUrl = rpc.replace('https://', 'wss://').replace('http://', 'ws://');
+
+        // Alchemy specific WSS adjustment if needed (usually just replacing https with wss works)
+        if (rpc.includes('alchemy.com') && !wsUrl.includes('/v2/')) {
+            // Basic replacement works for most alchemy/infura
+        }
+
+        try {
+            console.log("[BlockchainService] Connecting WebSocket to:", wsUrl);
+            this.wsProvider = new ethers.WebSocketProvider(wsUrl);
+            return this.wsProvider;
+        } catch (e) {
+            console.error("[BlockchainService] WebSocket connection failed", e);
+            return null;
+        }
+    }
+
     private getV2Router(): any {
         if (!this.v2Router) {
             this.v2Router = new Contract(ROUTER_ADDRESS, ROUTER_ABI, this.getProvider());
@@ -187,6 +215,13 @@ export class BlockchainService {
             this.v3Router = new Contract(ROUTER_V3_ADDRESS, ROUTER_V3_ABI, base);
         }
         return this.v3Router;
+    }
+
+    private getMulticall(): any {
+        if (!this.multicall) {
+            this.multicall = new Contract(MULTICALL_ADDRESS, MULTICALL_ABI, this.getProvider());
+        }
+        return this.multicall;
     }
 
     private getERC20(address: string, signerOrProvider?: any): any {
@@ -257,6 +292,70 @@ export class BlockchainService {
         } catch (e: any) {
             console.error("[getQuoteV3] Failed", e);
             return { quote: "0", fee: 3000 };
+        }
+    }
+
+    // NEW: Multicall Grouped Quotes (V2 and V3)
+    public async getQuotesMulticall(tokenIn: string, tokenOut: string, amountIn: string): Promise<{ v2: string, v3: { quote: string, fee: number } }> {
+        try {
+            const multicall = this.getMulticall();
+            const decimalsIn = await this.getTokenDecimals(tokenIn);
+            const decimalsOut = await this.getTokenDecimals(tokenOut);
+            const amountWei = ethers.parseUnits(amountIn, decimalsIn);
+
+            const v2Interface = new ethers.Interface(ROUTER_ABI);
+            const v3QuoterInterface = new ethers.Interface(QUOTER_ABI);
+
+            const tiers = [500, 3000, 10000];
+            const calls = [
+                // V2 Quote
+                {
+                    target: ROUTER_ADDRESS,
+                    callData: v2Interface.encodeFunctionData("getAmountsOut", [amountWei, [tokenIn, tokenOut]])
+                },
+                // V3 Quotes for different tiers
+                ...tiers.map(fee => ({
+                    target: QUOTER_V3_ADDRESS,
+                    callData: v3QuoterInterface.encodeFunctionData("quoteExactInputSingle", [tokenIn, tokenOut, fee, amountWei, 0])
+                }))
+            ];
+
+            const { returnData } = await multicall.aggregate.staticCall(calls);
+
+            // Decode V2
+            let v2Quote = "0";
+            try {
+                const decodedV2 = v2Interface.decodeFunctionResult("getAmountsOut", returnData[0]);
+                v2Quote = ethers.formatUnits(decodedV2[0][1], decimalsOut);
+            } catch (e) { }
+
+            // Decode V3
+            let bestV3QuoteWei = BigInt(0);
+            let bestV3Fee = 3000;
+
+            for (let i = 0; i < tiers.length; i++) {
+                try {
+                    const decodedV3 = v3QuoterInterface.decodeFunctionResult("quoteExactInputSingle", returnData[i + 1]);
+                    if (decodedV3[0] > bestV3QuoteWei) {
+                        bestV3QuoteWei = decodedV3[0];
+                        bestV3Fee = tiers[i];
+                    }
+                } catch (e) { }
+            }
+
+            const v3Quote = ethers.formatUnits(bestV3QuoteWei, decimalsOut);
+
+            console.log(`[Multicall] ${tokenIn}/${tokenOut} - V2: ${v2Quote}, V3: ${v3Quote} (Fee: ${bestV3Fee})`);
+            return {
+                v2: v2Quote,
+                v3: { quote: v3Quote, fee: bestV3Fee }
+            };
+        } catch (e: any) {
+            console.error("[Multicall] Execution failed", e.message);
+            // Fallback to separate calls if multicall fails
+            const v2 = await this.getAmountsOut(amountIn, [tokenIn, tokenOut]).then(res => res.length >= 2 ? ethers.formatUnits(res[1], 18) : "0"); // Simplified fallback decimals
+            const v3 = await this.getQuoteV3(tokenIn, tokenOut, amountIn);
+            return { v2, v3 };
         }
     }
 

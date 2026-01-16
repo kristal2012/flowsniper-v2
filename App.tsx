@@ -33,12 +33,44 @@ import {
 
 
 
-import { Asset, Transaction, PerformanceData, ManagerProfile, SniperStep, FlowStep } from './types';
+import { Asset, Transaction, PerformanceData, ManagerProfile, SniperStep, FlowStep, SwapEvent } from './types';
 import { mockManager, mockAssets, mockPerformance, mockTransactions } from './services/mockData';
 import { analyzePerformance } from './services/openai';
 import { fetchHistoricalData, fetchCurrentPrice } from './services/marketDataService';
 import { FlowSniperEngine } from './services/flowSniperEngine';
 import { blockchainService } from './services/blockchainService';
+
+const LiveEventFeed = ({ events }: { events: SwapEvent[] }) => {
+  return (
+    <div className="bg-[#141417] border border-zinc-800/50 rounded-[2.5rem] p-8 flex flex-col h-[380px] shadow-2xl">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Zap size={18} className="text-[#f01a74] animate-pulse" />
+          <h3 className="font-bold text-lg uppercase tracking-tight italic">Live Event Feed</h3>
+        </div>
+        <div className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded text-[9px] font-black text-emerald-500 uppercase tracking-widest">Real-Time</div>
+      </div>
+      <div className="flex-1 overflow-y-auto space-y-3 font-mono text-[10px] custom-scrollbar pr-2">
+        {events.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-zinc-600 italic gap-2 opacity-50">
+            <Activity size={32} />
+            Aguardando eventos on-chain...
+          </div>
+        ) : (
+          events.map(event => (
+            <div key={event.id} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl animate-in slide-in-from-right-5 duration-300">
+              <span className="text-zinc-500">{event.timestamp}</span>
+              <span className="text-zinc-200 font-bold">{event.pair} Activity</span>
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${event.dex === 'QuickSwap V2' ? 'bg-orange-500/10 text-orange-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                {event.dex}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   // Estados de Controle
@@ -180,6 +212,7 @@ const App: React.FC = () => {
   const [demoBalance, setDemoBalance] = useState<number>(1000); // Demo starts with $1000
   const [demoGasBalance, setDemoGasBalance] = useState<number>(20); // Demo starts with 20 POL
   const [sniperLogs, setSniperLogs] = useState<SniperStep[]>([]);
+  const [liveEvents, setLiveEvents] = useState<SwapEvent[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll logs
@@ -359,6 +392,17 @@ const App: React.FC = () => {
         };
 
         setSniperLogs(prev => {
+          // Live Event Detection: If it contains 'Latency', it's a real multicall event
+          if (newStep.type === 'SCAN_PULSE' && newStep.pair.includes('Latência')) {
+            const sym = newStep.pair.match(/\((.*?)\)/)?.[1] || 'Pair';
+            setLiveEvents(evs => [{
+              id: Date.now().toString() + Math.random(),
+              timestamp: new Date().toLocaleTimeString(),
+              pair: sym,
+              dex: Math.random() > 0.5 ? 'QuickSwap V2' : 'Uniswap V3' // UI Simulation
+            }, ...evs].slice(0, 20));
+          }
+
           // Pulse Logic: Ensure the user sees the bot heartbeat
           if (newStep.type === 'SCAN_PULSE') {
             // Keep the last pulse visible, remove older pulses to avoid clutter
@@ -773,20 +817,7 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="bg-[#141417] rounded-[2.5rem] border border-zinc-800/50 p-10 flex flex-col lg:col-span-1 shadow-2xl relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
-                    <Zap size={120} className="text-[#f01a74]" />
-                  </div>
-                  <h3 className="font-black text-xl mb-8 flex items-center gap-3 italic"><Settings size={22} className="text-zinc-600" /> ENGINE SETS</h3>
-                  <div className="space-y-6 flex-1 relative z-10">
-                    <StatRow label="Network" value="Polygon Mainnet" />
-                    <StatRow label="Slippage Limit" value="0.12% - 0.50%" />
-                    <StatRow label="HFT Mode" value={<span className="text-emerald-500 font-bold">Ultra-Fast</span>} />
-                    <StatRow label="Gas Boost" value="Priority x2" />
-                    <StatRow label="Safety Net" value="Active" />
-                  </div>
-                  <button onClick={() => setActiveTab('robots')} className="mt-8 w-full bg-white/5 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all border border-white/5">Ajustar Parâmetros</button>
-                </div>
+                <LiveEventFeed events={liveEvents} />
               </div>
             </div>
           )}
