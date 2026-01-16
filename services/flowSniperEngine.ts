@@ -88,7 +88,7 @@ export class FlowSniperEngine {
             }
 
             // 1. SCAN BATCH
-            const batchSize = 3;
+            const batchSize = 7;
             const batchSymbols = [];
             for (let i = 0; i < batchSize; i++) {
                 batchSymbols.push(symbols[Math.floor(Math.random() * symbols.length)]);
@@ -109,18 +109,15 @@ export class FlowSniperEngine {
 
             await Promise.all(batchSymbols.map(async (randomSymbol) => {
                 try {
-                    const { price, source } = await fetchCurrentPrice(randomSymbol);
-
-                    if (price <= 0) {
-                        console.warn(`[SniperEngine] Skip ${randomSymbol}: No price.`);
-                        return;
-                    }
-
-                    // Log Source for user visibility
-                    if (source === 'blockchain') {
-                        console.log(`[SniperEngine] ${randomSymbol} using On-Chain price (Zero Spread expected).`);
-                    }
-
+                    // Initialize state for each scan
+                    let isProfitable = false;
+                    let estimatedNetProfit = 0;
+                    let buyAmountOut = "0";
+                    let bestRoute = '';
+                    let useV3 = false;
+                    let txHash = '';
+                    let successTrade = false;
+                    let actualProfit = 0;
                     const tokenIn = TOKENS['USDT'];
                     let searchTag = randomSymbol.replace('USDT', '');
                     if (searchTag === 'BTC') searchTag = 'WBTC';
@@ -130,82 +127,93 @@ export class FlowSniperEngine {
                     const tokenOut = TOKENS[searchTag];
                     if (!tokenOut) return;
 
-                    // --- SMART STRATEGY: PRE-FLIGHT VERIFICATION ---
-                    let isProfitable = false;
-                    let estimatedNetProfit = 0;
-                    let buyAmountOut = "0";
-                    let bestRoute = 'QuickSwap (V2)';
-                    let useV3 = false;
-                    let txHash = '';
-                    let successTrade = false;
-                    let actualProfit = 0;
-
-                    // Parallel Fetch for Speed
-                    const [v2Amounts, v3Amount] = await Promise.all([
-                        withTimeout(blockchainService.getAmountsOut(this.tradeAmount, [tokenIn, tokenOut]), 4000, 'v2').catch(() => []),
-                        withTimeout(blockchainService.getQuoteV3(tokenIn, tokenOut, this.tradeAmount), 4000, 'v3').catch(() => "0")
+                    // --- HIGH-SPEED CROSS-DEX STRATEGY (v4.1.9) ---
+                    // 1. Fetch Buy/Sell quotes from both V2 and V3 simultaneously
+                    const [v2Buy, v3Buy, v2Sell, v3Sell] = await Promise.all([
+                        withTimeout(blockchainService.getAmountsOut(this.tradeAmount, [tokenIn, tokenOut]), 3000, 'v2Buy').catch(() => []),
+                        withTimeout(blockchainService.getQuoteV3(tokenIn, tokenOut, this.tradeAmount), 3500, 'v3Buy').catch(() => "0"),
+                        withTimeout(blockchainService.getAmountsOut("1.0", [tokenOut, tokenIn]), 3000, 'v2Sell').catch(() => []),
+                        withTimeout(blockchainService.getQuoteV3(tokenOut, tokenIn, "1.0"), 3500, 'v3Sell').catch(() => "0")
                     ]);
 
-                    let bestAmountOut = 0;
-                    if (v2Amounts && v2Amounts.length >= 2) {
-                        const dOut = await (blockchainService as any).getTokenDecimals(tokenOut);
-                        // FIXED: Use formatUnits to handle BigInt decimals safely
-                        const v2OutFloat = parseFloat(ethers.formatUnits(v2Amounts[1], dOut));
-                        bestAmountOut = v2OutFloat;
-                    }
-                    const v3Out = Number(v3Amount);
-                    if (v3Out > bestAmountOut) {
-                        bestAmountOut = v3Out;
-                        bestRoute = 'Uniswap (V3)';
-                        useV3 = true;
+                    const dOut = await (blockchainService as any).getTokenDecimals(tokenOut);
+
+                    // buy-out normalization
+                    const v2BuyOut = v2Buy.length >= 2 ? parseFloat(ethers.formatUnits(v2Buy[1], dOut)) : 0;
+                    const v3BuyOut = parseFloat(v3Buy);
+
+                    // sell-out normalization (price per 1 unit)
+                    const v2SellPrice = v2Sell.length >= 2 ? parseFloat(ethers.formatUnits(v2Sell[1], 6)) : 0;
+                    const v3SellPrice = parseFloat(v3Sell);
+
+                    // Cross-DEX Calculation
+                    // Route A: Buy V2, Sell V3
+                    const profitA = (v2BuyOut * v3SellPrice) - Number(this.tradeAmount);
+                    // Route B: Buy V3, Sell V2
+                    const profitB = (v3BuyOut * v2SellPrice) - Number(this.tradeAmount);
+
+                    let bestProfit = 0;
+                    let executionRoute = '';
+                    let bestBuyAmountOut = "0";
+                    let finalUseV3 = false;
+
+                    if (profitA > profitB) {
+                        bestProfit = profitA - (GAS_ESTIMATE_USDT * 2);
+                        executionRoute = 'QuickSwap -> Uniswap V3';
+                        bestBuyAmountOut = v2BuyOut.toString();
+                        finalUseV3 = false; // Buy on V2
+                    } else {
+                        bestProfit = profitB - (GAS_ESTIMATE_USDT * 2);
+                        executionRoute = 'Uniswap V3 -> QuickSwap';
+                        bestBuyAmountOut = v3BuyOut.toString();
+                        finalUseV3 = true; // Buy on V3
                     }
 
-                    if (bestAmountOut > 0) {
-                        buyAmountOut = bestAmountOut.toString();
-                        const grossProfit = (bestAmountOut * price) - Number(this.tradeAmount);
-                        const totalGas = (GAS_ESTIMATE_USDT * 2);
-                        estimatedNetProfit = grossProfit - totalGas;
-                        const spreadPct = ((bestAmountOut * price / Number(this.tradeAmount)) - 1) * 100;
-                        const targetProfit = Number(this.tradeAmount) * this.minProfit;
+                    const targetProfit = Number(this.tradeAmount) * this.minProfit;
+                    const spreadPct = (bestProfit / Number(this.tradeAmount)) * 100;
 
-                        // UI LOG: Inform the user about the spread even if skipping
-                        if (spreadPct > 0.01) {
-                            this.onLog({
-                                id: 'spread-' + Date.now() + Math.random(),
-                                timestamp: new Date().toLocaleTimeString(),
-                                type: 'SCAN_PULSE',
-                                pair: `${randomSymbol}: Spread ${spreadPct.toFixed(2)}% | Net: $${estimatedNetProfit.toFixed(3)} [v4.1.8]`,
-                                profit: 0,
-                                status: 'SUCCESS',
-                                hash: ''
-                            });
+                    if (bestProfit > 0.01) {
+                        this.onLog({
+                            id: 'spread-' + Date.now() + Math.random(),
+                            timestamp: new Date().toLocaleTimeString(),
+                            type: 'SCAN_PULSE',
+                            pair: `${randomSymbol}: ${executionRoute} | Net: $${bestProfit.toFixed(3)} [v4.1.9]`,
+                            profit: 0,
+                            status: 'SUCCESS',
+                            hash: ''
+                        });
+                    }
+
+                    if (bestProfit > targetProfit && bestProfit < 50.0) {
+                        // Safety Check: Verify with CEX Price to avoid toxic pools
+                        const { price: cexPrice } = await fetchCurrentPrice(randomSymbol);
+                        const dexSellPrice = finalUseV3 ? v2SellPrice : v3SellPrice;
+
+                        // Avoid execution if DEX price is wildly disconnected from CEX (likely illiquid/manipulated)
+                        if (cexPrice > 0 && Math.abs(dexSellPrice - cexPrice) / cexPrice > 0.15) {
+                            console.log(`[SniperEngine] Skipping ${randomSymbol}: DEX Price deviation too high (>15%)`);
+                            return;
                         }
 
-                        if (estimatedNetProfit > targetProfit) {
-                            const roi = (estimatedNetProfit / Number(this.tradeAmount)) * 100;
-                            // Circuit Breaker
-                            if (roi <= 50.0) {
-                                isProfitable = true;
-                                console.log(`[Strategy] ✅ ${searchTag} PROFITABLE: $${estimatedNetProfit.toFixed(4)}`);
-                            }
-                        }
+                        isProfitable = true;
+                        buyAmountOut = bestBuyAmountOut;
+                        estimatedNetProfit = bestProfit;
+                        bestRoute = executionRoute;
+                        useV3 = finalUseV3;
                     }
 
                     if (isProfitable) {
                         if (this.runMode === 'REAL') {
-                            // EXECUTE REAL
-                            const minBuyOut = (Number(buyAmountOut) * (1 - this.slippage)).toString();
-                            const bHash = await blockchainService.executeTrade(tokenIn, tokenOut, this.tradeAmount, true, undefined, minBuyOut, useV3);
+                            const minBuyOut = (Number(bestBuyAmountOut) * (1 - this.slippage)).toString();
+                            const bHash = await blockchainService.executeTrade(tokenIn, tokenOut, this.tradeAmount, true, undefined, minBuyOut, finalUseV3);
                             await new Promise(r => setTimeout(r, 1000));
 
                             const activeAddr = blockchainService.getWalletAddress();
                             const tokenBal = activeAddr ? await blockchainService.getBalance(tokenOut, activeAddr) : '0';
                             if (Number(tokenBal) > 0) {
-                                const currentSellAmounts = await blockchainService.getAmountsOut(tokenBal, [tokenOut, tokenIn]);
-                                const expectedUsdtBack = Number(currentSellAmounts[1]) / (10 ** 6);
-                                const minUsdtOut = (expectedUsdtBack * (1 - this.slippage)).toString();
-                                txHash = await blockchainService.executeTrade(tokenOut, tokenIn, tokenBal, true, undefined, minUsdtOut);
-                                actualProfit = expectedUsdtBack - Number(this.tradeAmount) - GAS_ESTIMATE_USDT;
+                                // Sell on the OPPOSITE dex
+                                const txHash = await blockchainService.executeTrade(tokenOut, tokenIn, tokenBal, true, undefined, "0", !finalUseV3);
+                                actualProfit = estimatedNetProfit;
                                 successTrade = true;
                             }
                         } else {

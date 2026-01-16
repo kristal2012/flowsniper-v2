@@ -51,6 +51,7 @@ export class BlockchainService {
     public lastError: string | null = null;
     private browserProvider: BrowserProvider | null = null;
     private operatorWallet: Wallet | null = null;
+    private decimalCache: { [address: string]: number } = {};
 
     constructor() {
         if (typeof window !== 'undefined' && ((window as any).ethereum || (window as any).rabby)) {
@@ -488,16 +489,18 @@ export class BlockchainService {
     private async getTokenDecimals(tokenAddress: string): Promise<number> {
         if (tokenAddress === '0x0000000000000000000000000000000000000000') return 18;
 
+        const normalized = tokenAddress.toLowerCase();
+        if (this.decimalCache[normalized]) return this.decimalCache[normalized];
+
         const STABLES = {
-            'USDT': '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
-            'USDC_B': '0x2791bca1f2de4661ed88a30c99a7a9449aa84174',
-            'USDC_N': '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
+            'usdt': '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+            'usdc_b': '0x2791bca1f2de4661ed88a30c99a7a9449aa84174',
+            'usdc_n': '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
         };
 
-        const normalized = tokenAddress.toLowerCase();
-
         // Static mapping for speed/known tokens
-        if (normalized === STABLES.USDT || normalized === STABLES.USDC_B || normalized === STABLES.USDC_N) {
+        if (normalized === STABLES.usdt || normalized === STABLES.usdc_b || normalized === STABLES.usdc_n) {
+            this.decimalCache[normalized] = 6;
             return 6;
         }
 
@@ -506,6 +509,7 @@ export class BlockchainService {
             const provider = this.getProvider();
             const contract = new Contract(tokenAddress, ["function decimals() view returns (uint8)"], provider);
             const d = await contract.decimals();
+            this.decimalCache[normalized] = Number(d);
             return Number(d);
         } catch (e) {
             console.warn(`[BlockchainService] Failed to fetch decimals for ${tokenAddress}, defaulting to 18`);
