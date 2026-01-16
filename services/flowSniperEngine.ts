@@ -75,8 +75,8 @@ export class FlowSniperEngine {
             return Promise.race([promise, timeout]);
         };
 
-        const GAS_ESTIMATE_USDT = 0.005; // Reduced from 0.02 to be ultra-sensitive
-        console.log("[SniperEngine] Motor v4.3.3 Extrema Sensibilidade Ativada.");
+        const GAS_ESTIMATE_USDT = 0.01; // Realistic for Polygon (x2 swaps with priority)
+        console.log("[SniperEngine] Motor v4.3.4 Simulação Realística Iniciada.");
 
         while (this.active) {
             try {
@@ -194,15 +194,13 @@ export class FlowSniperEngine {
                         }
 
                         if (bestProfit > targetProfit && bestProfit < 100.0) {
-                            if (this.runMode === 'REAL') {
-                                const { price: cexPrice } = await fetchCurrentPrice(randomSymbol);
-                                const dexSellPrice = finalUseV3 ? v2SellPrice : v3SellPrice;
+                            // CEX Check (Realism): Only trade if price is consistent with global markets
+                            const { price: cexPrice } = await fetchCurrentPrice(randomSymbol);
+                            const dexSellPrice = finalUseV3 ? v2SellPrice : v3SellPrice;
 
-                                if (cexPrice > 0 && Math.abs(dexSellPrice - cexPrice) / cexPrice > 0.15) {
-                                    return;
-                                }
+                            if (cexPrice > 0 && Math.abs(dexSellPrice - cexPrice) / cexPrice > 0.15) {
+                                return;
                             }
-                            // Relaxed CEX check for DEMO mode to allow continuous flow
 
                             isProfitable = true;
                             buyAmountOut = bestBuyAmountOut;
