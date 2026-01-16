@@ -20,7 +20,7 @@ const ROUTER_ABI = [
 ];
 
 // QuickSwap Router Address (Polygon)
-const ROUTER_ADDRESS = "0xa5E0829CaCEd8fFDD01a74159755FD5963cf49C2"; // QuickSwap V2 Corrected
+const ROUTER_ADDRESS = "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff"; // QuickSwap V2 Official Fix
 
 // Uniswap V3 Addresses (Polygon)
 const QUOTER_V3_ADDRESS = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"; // Matches QuoterV2 on some docs

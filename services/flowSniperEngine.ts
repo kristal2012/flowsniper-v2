@@ -75,8 +75,8 @@ export class FlowSniperEngine {
             return Promise.race([promise, timeout]);
         };
 
-        const GAS_ESTIMATE_USDT = 0.01; // Realistic for Polygon (x2 swaps with priority)
-        console.log("[SniperEngine] Motor v4.3.4 Simulação Realística Iniciada.");
+        const GAS_ESTIMATE_USDT = 0.02; // Restored realism (x2 priority swaps on Polygon)
+        console.log("[SniperEngine] Motor v4.3.5 Precisão Honesta Iniciada.");
 
         while (this.active) {
             try {
@@ -154,27 +154,46 @@ export class FlowSniperEngine {
                             hash: ''
                         });
 
-                        const profitA = (v2BuyOut * v3SellPrice) - Number(this.tradeAmount);
-                        const profitB = (v3BuyOut * v2SellPrice) - Number(this.tradeAmount);
+                        const rawProfitA = (v2BuyOut * v3SellPrice) - Number(this.tradeAmount);
+                        const rawProfitB = (v3BuyOut * v2SellPrice) - Number(this.tradeAmount);
+
+                        const profitA = rawProfitA - (GAS_ESTIMATE_USDT * 2);
+                        const profitB = rawProfitB - (GAS_ESTIMATE_USDT * 2);
 
                         let bestProfit = 0;
+                        let bestRawProfit = 0;
                         let executionRoute = '';
                         let bestBuyAmountOut = "0";
                         let finalUseV3 = false;
                         let bestV3Fee = 3000;
 
                         if (profitA > profitB) {
-                            bestProfit = profitA - (GAS_ESTIMATE_USDT * 2);
+                            bestProfit = profitA;
+                            bestRawProfit = rawProfitA;
                             executionRoute = 'QuickSwap -> V3';
                             bestBuyAmountOut = v2BuyOut.toString();
                             finalUseV3 = false;
                             bestV3Fee = v3SellObj.fee;
                         } else {
-                            bestProfit = profitB - (GAS_ESTIMATE_USDT * 2);
+                            bestProfit = profitB;
+                            bestRawProfit = rawProfitB;
                             executionRoute = 'V3 -> QuickSwap';
                             bestBuyAmountOut = v3BuyOut.toString();
                             finalUseV3 = true;
                             bestV3Fee = v3BuyObj.fee;
+                        }
+
+                        // HONEST RAW PULSE: Shows user if the spread exists BEFORE gas
+                        if (bestRawProfit > 0.001) {
+                            this.onLog({
+                                id: 'raw-' + Date.now() + Math.random(),
+                                timestamp: new Date().toLocaleTimeString(),
+                                type: 'SCAN_PULSE',
+                                pair: `💰 Spread Bruto: $${bestRawProfit.toFixed(4)} | Robô aguardando Alvo: $${(Number(this.tradeAmount) * this.minProfit).toFixed(3)}`,
+                                profit: 0,
+                                status: 'SUCCESS',
+                                hash: ''
+                            });
                         }
 
                         const targetProfit = Number(this.tradeAmount) * this.minProfit;
