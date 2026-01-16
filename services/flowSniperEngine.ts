@@ -74,7 +74,7 @@ export class FlowSniperEngine {
 
 
 
-        const GAS_ESTIMATE_USDT = 0.03;
+        const GAS_ESTIMATE_USDT = 0.02;
 
         while (this.active) {
             if (this.dailyPnl <= this.maxDrawdown) {
@@ -144,8 +144,9 @@ export class FlowSniperEngine {
                     let bestAmountOut = 0;
                     if (v2Amounts && v2Amounts.length >= 2) {
                         const dOut = await (blockchainService as any).getTokenDecimals(tokenOut);
-                        const v2Out = Number(v2Amounts[1]) / (10 ** dOut);
-                        bestAmountOut = v2Out;
+                        // FIXED: Use formatUnits to handle BigInt decimals safely
+                        const v2OutFloat = parseFloat(ethers.formatUnits(v2Amounts[1], dOut));
+                        bestAmountOut = v2OutFloat;
                     }
                     const v3Out = Number(v3Amount);
                     if (v3Out > bestAmountOut) {
@@ -163,7 +164,8 @@ export class FlowSniperEngine {
 
                         if (estimatedNetProfit > targetProfit) {
                             const roi = (estimatedNetProfit / Number(this.tradeAmount)) * 100;
-                            if (roi <= 20.0) {
+                            // Relaxed Circuit Breaker for higher sensitivity
+                            if (roi <= 50.0) {
                                 isProfitable = true;
                                 console.log(`[Strategy] ✅ ${searchTag} PROFITABLE: $${estimatedNetProfit.toFixed(4)}`);
                             }
