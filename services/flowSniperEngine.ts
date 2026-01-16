@@ -143,6 +143,17 @@ export class FlowSniperEngine {
                         const v2SellPrice = v2Sell.length >= 2 ? parseFloat(ethers.formatUnits(v2Sell[1], 6)) : 0;
                         const v3SellPrice = parseFloat(v3SellObj.quote);
 
+                        // FORCE TRACE LOG: Proof of activity
+                        this.onLog({
+                            id: 'trace-' + Date.now() + Math.random(),
+                            timestamp: new Date().toLocaleTimeString(),
+                            type: 'SCAN_PULSE',
+                            pair: `🔎 ${randomSymbol}: QW $${v2SellPrice.toFixed(4)} | V3 $${v3SellPrice.toFixed(4)}`,
+                            profit: 0,
+                            status: 'SUCCESS',
+                            hash: ''
+                        });
+
                         const profitA = (v2BuyOut * v3SellPrice) - Number(this.tradeAmount);
                         const profitB = (v3BuyOut * v2SellPrice) - Number(this.tradeAmount);
 
@@ -168,14 +179,14 @@ export class FlowSniperEngine {
 
                         const targetProfit = Number(this.tradeAmount) * this.minProfit;
 
-                        // NEAR-PROFIT LOGGING: Visible feedback for even tiny spreads
-                        if (bestProfit > 0.001) {
+                        // NEAR-PROFIT LOGGING: Visible feedback for spreads > $0.01
+                        if (bestProfit > 0.01) {
                             const isNear = bestProfit >= (targetProfit * 0.7);
                             this.onLog({
                                 id: 'diagnostic-' + Date.now() + Math.random(),
                                 timestamp: new Date().toLocaleTimeString(),
                                 type: 'SCAN_PULSE',
-                                pair: `${isNear ? '[QUASE LÁ] ' : ''}${randomSymbol}: Lucro $${bestProfit.toFixed(3)} | Alvo: $${targetProfit.toFixed(3)}`,
+                                pair: `${isNear ? '[DENTRO DO ALVO] ' : '[ALTO SPREAD] '}${randomSymbol}: Lucro $${bestProfit.toFixed(3)} | Alvo: $${targetProfit.toFixed(3)}`,
                                 profit: 0,
                                 status: 'SUCCESS',
                                 hash: ''
