@@ -178,18 +178,16 @@ export class FlowSniperEngine {
             const GAS_ESTIMATE = 0.05; // Slightly higher to be safe
             const netProfit = bestProfit - GAS_ESTIMATE;
 
-            // Diagnostic log for Specialist
-            if (latency < 300) {
-                this.onLog({
-                    id: 'lat-' + Date.now() + Math.random(),
-                    timestamp: new Date().toLocaleTimeString(),
-                    type: 'SCAN_PULSE',
-                    pair: `⚡ [Multicall] ${symbol} | Latência: ${latency}ms | Math Check: OK`,
-                    profit: 0,
-                    status: 'SUCCESS',
-                    hash: ''
-                });
-            }
+            // Always show scan activity to user (heartbeat)
+            this.onLog({
+                id: 'lat-' + Date.now() + Math.random(),
+                timestamp: new Date().toLocaleTimeString(),
+                type: 'SCAN_PULSE',
+                pair: `⚡ [Multicall] ${symbol} | Latência: ${latency}ms | Profit Check: ${netProfit > 0 ? '+' : ''}${netProfit.toFixed(4)}`,
+                profit: 0,
+                status: 'SUCCESS',
+                hash: ''
+            });
 
             if (netProfit > (Number(this.tradeAmount) * this.minProfit)) {
                 const bestPath = profitA >= profitB ? 'QUICK_V2_TO_UNI_V3' : 'UNI_V3_TO_QUICK_V2';
