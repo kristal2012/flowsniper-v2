@@ -387,7 +387,7 @@ const App: React.FC = () => {
           timestamp: newStep.timestamp,
           path: newStep.pair.includes('/') ? newStep.pair.split('/') : [newStep.pair],
           profit: newStep.profit,
-          status: newStep.status === 'SUCCESS' ? (newStep.type === 'SCAN_PULSE' ? 'EXPIRED' : 'SUCCESS') : 'EXPIRED',
+          status: newStep.status === 'SUCCESS' ? 'SUCCESS' : 'EXPIRED',
           hash: newStep.hash
         };
 
