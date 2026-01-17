@@ -393,13 +393,29 @@ const App: React.FC = () => {
 
         setSniperLogs(prev => {
           // Live Event Detection: If it contains 'Latency', it's a real multicall event
-          if (newStep.type === 'SCAN_PULSE' && newStep.pair.includes('Latência')) {
-            const sym = newStep.pair.match(/\((.*?)\)/)?.[1] || 'Pair';
+          if (newStep.pair.includes('Latência')) {
+            const symMatch = newStep.pair.match(/\] (.*?) \|/);
+            const sym = symMatch ? symMatch[1] : 'Pair';
+
             setLiveEvents(evs => [{
               id: Date.now().toString() + Math.random(),
               timestamp: new Date().toLocaleTimeString(),
               pair: sym,
-              dex: Math.random() > 0.5 ? 'QuickSwap V2' : 'Uniswap V3' // UI Simulation
+              dex: 'Multicall' // This indicates a parallel scan of all DEXs
+            }, ...evs].slice(0, 20));
+          }
+
+          // Execution Detection: If it was a successful execution, show the specific DEX path
+          if (newStep.type === 'ROUTE_OPTIMIZATION' && newStep.pair.includes('Executado')) {
+            const dexMatch = newStep.pair.match(/\| (.*)/);
+            const dexs = dexMatch ? dexMatch[1] : 'DEXs';
+            const sym = newStep.pair.split(' ')[0] || 'Pair';
+
+            setLiveEvents(evs => [{
+              id: 'exec-' + Date.now().toString(),
+              timestamp: new Date().toLocaleTimeString(),
+              pair: sym,
+              dex: dexs as any
             }, ...evs].slice(0, 20));
           }
 
@@ -447,6 +463,12 @@ const App: React.FC = () => {
   // --- LOGIC MERGE: Start/Stop Engine ---
   useEffect(() => {
     if (botActive && sniperRef.current) {
+      // Reset profit counters when starting a new session
+      setDailyProfit(0);
+      setDailyLoss(0);
+      setSniperLogs([]);
+      setLiveEvents([]);
+
       sniperRef.current.start(
         mode,
         demoGasBalance,

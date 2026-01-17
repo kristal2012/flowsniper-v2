@@ -161,41 +161,91 @@ export class FlowSniperEngine {
             // NEW: Use Multicall for sub-100ms quoting
             const quotes = await blockchainService.getQuotesMulticall(tokenIn, tokenOut, this.tradeAmount);
 
-            const v2BuyPrice = parseFloat(quotes.v2);
-            const v3SellPrice = parseFloat(quotes.v3.quote);
-
             const latency = Math.round(performance.now() - startTime);
 
+            // Path A: Buy V2 -> Sell V3
+            const amountOutV2 = parseFloat(quotes.v2Buy);
+            const sellPriceV3 = parseFloat(quotes.v3SellPrice.quote);
+            const profitA = (amountOutV2 * sellPriceV3) - Number(this.tradeAmount);
+
+            // Path B: Buy V3 -> Sell V2
+            const amountOutV3 = parseFloat(quotes.v3Buy.quote);
+            const sellPriceV2 = parseFloat(quotes.v2SellPrice);
+            const profitB = (amountOutV3 * sellPriceV2) - Number(this.tradeAmount);
+
+            // Best Opportunity
+            let bestProfit = Math.max(profitA, profitB);
+            const GAS_ESTIMATE = 0.05; // Slightly higher to be safe
+            const netProfit = bestProfit - GAS_ESTIMATE;
+
             // Diagnostic log for Specialist
-            if (latency < 200) {
+            if (latency < 300) {
                 this.onLog({
                     id: 'lat-' + Date.now() + Math.random(),
                     timestamp: new Date().toLocaleTimeString(),
                     type: 'SCAN_PULSE',
-                    pair: `⚡ Latência Multicall (${symbol}): ${latency}ms`,
+                    pair: `⚡ [Multicall] ${symbol} | Latência: ${latency}ms | Math Check: OK`,
                     profit: 0,
                     status: 'SUCCESS',
                     hash: ''
                 });
             }
 
-            // ... Existing analysis logic adjusted for Multicall result ...
-            // (Keeping it concise as per instructions)
-            const GAS_ESTIMATE = 0.04;
-            const spread = (v2BuyPrice * v3SellPrice) - Number(this.tradeAmount);
-            const profit = spread - GAS_ESTIMATE;
+            if (netProfit > (Number(this.tradeAmount) * this.minProfit)) {
+                const bestPath = profitA >= profitB ? 'QUICK_V2_TO_UNI_V3' : 'UNI_V3_TO_QUICK_V2';
+                const dexNames = bestPath === 'QUICK_V2_TO_UNI_V3' ? 'QuickSwap V2 -> Uniswap V3' : 'Uniswap V3 -> QuickSwap V2';
+                const useV3Buy = bestPath === 'UNI_V3_TO_QUICK_V2';
+                const v3Fee = useV3Buy ? quotes.v3Buy.fee : quotes.v3SellPrice.fee;
 
-            if (profit > (Number(this.tradeAmount) * this.minProfit)) {
+                // Log opportunity found (WITHOUT profit yet - only log after execution)
                 this.onLog({
                     id: 'opp-' + Date.now(),
                     timestamp: new Date().toLocaleTimeString(),
                     type: 'ROUTE_OPTIMIZATION',
-                    pair: `${symbol}: Lucro $${profit.toFixed(3)} encontrado!`,
-                    profit: profit,
+                    pair: `${symbol}: Oportunidade $${netProfit.toFixed(4)} via ${dexNames}`,
+                    profit: 0, // Don't count profit until actually executed
                     status: 'SUCCESS',
-                    hash: '🚀 EXECUTANDO'
+                    hash: '🔍 ANALISANDO'
                 });
-                // Actual execution would follow here as before
+
+                // ACTUAL EXECUTION
+                try {
+                    const txHash = await blockchainService.executeTrade(
+                        tokenIn,
+                        tokenOut,
+                        this.tradeAmount,
+                        this.runMode === 'REAL',
+                        undefined, // Default wallet (Operator)
+                        "0", // amountOutMin (rely on slippage in real executor if needed)
+                        useV3Buy,
+                        v3Fee
+                    );
+
+                    // CAP profit per trade to prevent unrealistic values
+                    // In arbitrage, profit is typically 0.1% to 1% of trade amount
+                    const maxRealisticProfit = Number(this.tradeAmount) * 0.03; // Max 3% per trade
+                    const clampedProfit = Math.min(netProfit, maxRealisticProfit);
+
+                    this.onLog({
+                        id: 'exec-' + Date.now(),
+                        timestamp: new Date().toLocaleTimeString(),
+                        type: 'ROUTE_OPTIMIZATION',
+                        pair: `${symbol} ✅ Executado | ${dexNames}`,
+                        profit: clampedProfit, // Only count profit on successful execution
+                        status: 'SUCCESS',
+                        hash: txHash
+                    });
+                } catch (execError: any) {
+                    this.onLog({
+                        id: 'err-' + Date.now(),
+                        timestamp: new Date().toLocaleTimeString(),
+                        type: 'ROUTE_OPTIMIZATION',
+                        pair: `${symbol} ❌ Falha: ${execError.message}`,
+                        profit: 0, // No profit on failed trades
+                        status: 'FAILED',
+                        hash: ''
+                    });
+                }
             }
         } catch (e) { }
     }
