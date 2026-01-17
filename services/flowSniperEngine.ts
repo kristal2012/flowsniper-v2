@@ -82,6 +82,7 @@ export class FlowSniperEngine {
 
                 if (this.runMode === 'DEMO') {
                     // Simulated events for Demo Mode
+                    console.log("[SniperEngine] Running DEMO simulation cycle...");
                     await this.runDemoSimulation();
                 } else {
                     // In REAL mode, we just stay "active" and let listeners handle the work.
@@ -245,7 +246,9 @@ export class FlowSniperEngine {
                     });
                 }
             }
-        } catch (e) { }
+        } catch (e: any) {
+            console.error("[SniperEngine] analyzeOpportunity ERROR:", e?.message || e);
+        }
     }
 
     private cleanupListeners() {
