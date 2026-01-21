@@ -295,67 +295,103 @@ export class BlockchainService {
         }
     }
 
-    // NEW: Multicall Grouped Quotes (V2 and V3)
-    public async getQuotesMulticall(tokenIn: string, tokenOut: string, amountIn: string): Promise<{ v2: string, v3: { quote: string, fee: number } }> {
+    // NEW: Multicall Grouped Quotes (V2 and V3 - Buy & Sell)
+    public async getQuotesMulticall(tokenIn: string, tokenOut: string, amountIn: string): Promise<{
+        v2Buy: string,
+        v3Buy: { quote: string, fee: number },
+        v2SellPrice: string,
+        v3SellPrice: { quote: string, fee: number }
+    }> {
         try {
             const multicall = this.getMulticall();
             const decimalsIn = await this.getTokenDecimals(tokenIn);
             const decimalsOut = await this.getTokenDecimals(tokenOut);
-            const amountWei = ethers.parseUnits(amountIn, decimalsIn);
+
+            const amountInWei = ethers.parseUnits(amountIn, decimalsIn);
+            const unitOutWei = ethers.parseUnits("1.0", decimalsOut); // For unit price
 
             const v2Interface = new ethers.Interface(ROUTER_ABI);
             const v3QuoterInterface = new ethers.Interface(QUOTER_ABI);
 
             const tiers = [500, 3000, 10000];
+
+            // Build 8 calls: 
+            // 1. V2 Buy (amountIn)
+            // 2. V2 Sell Price (1.0 unit)
+            // 3-5. V3 Buy (amountIn) - 3 tiers
+            // 6-8. V3 Sell Price (1.0 unit) - 3 tiers
             const calls = [
-                // V2 Quote
-                {
-                    target: ROUTER_ADDRESS,
-                    callData: v2Interface.encodeFunctionData("getAmountsOut", [amountWei, [tokenIn, tokenOut]])
-                },
-                // V3 Quotes for different tiers
+                // 0: V2 Buy
+                { target: ROUTER_ADDRESS, callData: v2Interface.encodeFunctionData("getAmountsOut", [amountInWei, [tokenIn, tokenOut]]) },
+                // 1: V2 Sell
+                { target: ROUTER_ADDRESS, callData: v2Interface.encodeFunctionData("getAmountsOut", [unitOutWei, [tokenOut, tokenIn]]) },
+                // 2-4: V3 Buy
                 ...tiers.map(fee => ({
                     target: QUOTER_V3_ADDRESS,
-                    callData: v3QuoterInterface.encodeFunctionData("quoteExactInputSingle", [tokenIn, tokenOut, fee, amountWei, 0])
+                    callData: v3QuoterInterface.encodeFunctionData("quoteExactInputSingle", [tokenIn, tokenOut, fee, amountInWei, 0])
+                })),
+                // 5-7: V3 Sell
+                ...tiers.map(fee => ({
+                    target: QUOTER_V3_ADDRESS,
+                    callData: v3QuoterInterface.encodeFunctionData("quoteExactInputSingle", [tokenOut, tokenIn, fee, unitOutWei, 0])
                 }))
             ];
 
             const { returnData } = await multicall.aggregate.staticCall(calls);
 
-            // Decode V2
-            let v2Quote = "0";
+            // Decode V2 Buy
+            let v2Buy = "0";
             try {
-                const decodedV2 = v2Interface.decodeFunctionResult("getAmountsOut", returnData[0]);
-                v2Quote = ethers.formatUnits(decodedV2[0][1], decimalsOut);
+                const decoded = v2Interface.decodeFunctionResult("getAmountsOut", returnData[0]);
+                v2Buy = ethers.formatUnits(decoded[0][1], decimalsOut);
             } catch (e) { }
 
-            // Decode V3
-            let bestV3QuoteWei = BigInt(0);
-            let bestV3Fee = 3000;
+            // Decode V2 Sell
+            let v2SellPrice = "0";
+            try {
+                const decoded = v2Interface.decodeFunctionResult("getAmountsOut", returnData[1]);
+                v2SellPrice = ethers.formatUnits(decoded[0][1], decimalsIn);
+            } catch (e) { }
 
+            // Decode V3 Buy (best tier)
+            let bestBuyV3Wei = BigInt(0);
+            let bestBuyFee = 3000;
             for (let i = 0; i < tiers.length; i++) {
                 try {
-                    const decodedV3 = v3QuoterInterface.decodeFunctionResult("quoteExactInputSingle", returnData[i + 1]);
-                    if (decodedV3[0] > bestV3QuoteWei) {
-                        bestV3QuoteWei = decodedV3[0];
-                        bestV3Fee = tiers[i];
+                    const decoded = v3QuoterInterface.decodeFunctionResult("quoteExactInputSingle", returnData[i + 2]);
+                    if (decoded[0] > bestBuyV3Wei) {
+                        bestBuyV3Wei = decoded[0];
+                        bestBuyFee = tiers[i];
                     }
                 } catch (e) { }
             }
 
-            const v3Quote = ethers.formatUnits(bestV3QuoteWei, decimalsOut);
+            // Decode V3 Sell (best tier)
+            let bestSellV3Wei = BigInt(0);
+            let bestSellFee = 3000;
+            for (let i = 0; i < tiers.length; i++) {
+                try {
+                    const decoded = v3QuoterInterface.decodeFunctionResult("quoteExactInputSingle", returnData[i + 5]);
+                    if (decoded[0] > bestSellV3Wei) {
+                        bestSellV3Wei = decoded[0];
+                        bestSellFee = tiers[i];
+                    }
+                } catch (e) { }
+            }
 
-            console.log(`[Multicall] ${tokenIn}/${tokenOut} - V2: ${v2Quote}, V3: ${v3Quote} (Fee: ${bestV3Fee})`);
             return {
-                v2: v2Quote,
-                v3: { quote: v3Quote, fee: bestV3Fee }
+                v2Buy: v2Buy,
+                v3Buy: { quote: ethers.formatUnits(bestBuyV3Wei, decimalsOut), fee: bestBuyFee },
+                v2SellPrice: v2SellPrice,
+                v3SellPrice: { quote: ethers.formatUnits(bestSellV3Wei, decimalsIn), fee: bestSellFee }
             };
         } catch (e: any) {
-            console.error("[Multicall] Execution failed", e.message);
-            // Fallback to separate calls if multicall fails
-            const v2 = await this.getAmountsOut(amountIn, [tokenIn, tokenOut]).then(res => res.length >= 2 ? ethers.formatUnits(res[1], 18) : "0"); // Simplified fallback decimals
-            const v3 = await this.getQuoteV3(tokenIn, tokenOut, amountIn);
-            return { v2, v3 };
+            console.error("[Multicall] Failed, using fallback", e.message);
+            // Minimal fallback
+            return {
+                v2Buy: "0", v3Buy: { quote: "0", fee: 3000 },
+                v2SellPrice: "0", v3SellPrice: { quote: "0", fee: 3000 }
+            };
         }
     }
 

@@ -11,50 +11,34 @@ export interface CandleData {
     volume: number;
 }
 
-const BYBIT_V5_URL = '/bybit-api/v5/market';
+// CACHE SYSTEM
+const PRICE_CACHE = new Map<string, { price: number, timestamp: number }>();
+const CACHE_DURATION_MS = 10000; // 10 seconds cache
 
 export const fetchHistoricalData = async (symbol: string = 'POLUSDT', interval: string = '1', limit: number = 50): Promise<CandleData[]> => {
+    // CryptoCompare HistoMinute
     try {
-        const url = `${BYBIT_V5_URL}/kline?category=linear&symbol=${symbol}&interval=${interval}&limit=${limit}`;
-        console.log("Fetching Historical Data from:", url);
+        const fsym = symbol.replace('USDT', '').replace('W', ''); // POL, BTC, ETH
+        const url = `https://min-api.cryptocompare.com/data/v2/histominute?fsym=${fsym}&tsym=USD&limit=${limit}&aggregate=${interval}`;
+
+        console.log(`[MarketData] Fetching history from CryptoCompare: ${fsym}`);
         const response = await fetch(url);
         const data = await response.json();
 
-        if (data.retCode === 0 && data.result && data.result.list && data.result.list.length > 0) {
-            return data.result.list.map((item: any) => ({
-                time: parseInt(item[0]),
-                open: parseFloat(item[1]),
-                high: parseFloat(item[2]),
-                low: parseFloat(item[3]),
-                close: parseFloat(item[4]),
-                volume: parseFloat(item[5])
-            })).reverse();
-        }
-        throw new Error("Bybit data empty or invalid");
-    } catch (error) {
-        console.warn("Bybit Fetch failed, trying Binance fallback...", error);
-        try {
-            // Binance Fallback (Public API usually has better CORS/Availability)
-            // Binance uses 1m, 5m, etc. instead of 1.
-            const binanceInterval = interval === '1' ? '1m' : (interval + 'm');
-            // Binance symbol for MATIC/POL is POLUSDT
-            const binanceSymbol = symbol;
-            const binanceUrl = `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${binanceInterval}&limit=${limit}`;
-            const bResp = await fetch(binanceUrl);
-            const bData = await bResp.json();
-
-            return bData.map((item: any) => ({
-                time: item[0],
-                open: parseFloat(item[1]),
-                high: parseFloat(item[2]),
-                low: parseFloat(item[3]),
-                close: parseFloat(item[4]),
-                volume: parseFloat(item[5])
+        if (data.Response === 'Success' && data.Data && data.Data.Data) {
+            return data.Data.Data.map((item: any) => ({
+                time: item.time * 1000,
+                open: item.open,
+                high: item.high,
+                low: item.low,
+                close: item.close,
+                volume: item.volumeto
             }));
-        } catch (bError) {
-            console.error("All data sources failed:", bError);
-            return [];
         }
+        throw new Error("CryptoCompare data empty");
+    } catch (error) {
+        console.warn("[MarketData] Historical fetch failed:", error);
+        return [];
     }
 };
 
@@ -64,76 +48,63 @@ export interface PriceResult {
 }
 
 export const fetchCurrentPrice = async (symbol: string = 'POLUSDT'): Promise<PriceResult> => {
-    // Normalize symbols for Binance (WMATIC -> MATIC)
+    // 1. CHECK CACHE
+    const cached = PRICE_CACHE.get(symbol);
+    if (cached && (Date.now() - cached.timestamp < CACHE_DURATION_MS)) {
+        return { price: cached.price, source: 'cache' };
+    }
+
     const normalizedSymbol = symbol.replace('WMATIC', 'MATIC').replace('POL', 'MATIC');
+    const fsym = normalizedSymbol.replace('USDT', '');
 
-    const withTimeout = (promise: Promise<any>, ms: number) => {
-        return Promise.race([
-            promise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
-        ]);
-    };
-
-    // 0. Try Serverless Proxy (Reliable, No CORS) [v4.1.8]
+    // 2. CRYPTOCOMPARE (Primary - No Block)
     try {
-        const resp = await withTimeout(
-            fetch(`/api/price?symbol=${normalizedSymbol}`).then(r => r.json()),
-            6000
-        );
-        if (resp && resp.price > 0) {
-            console.log(`[MarketData] ${normalizedSymbol} price fetched from SERVER PROXY (${resp.source}): $${resp.price} [v4.1.8]`);
-            return { price: resp.price, source: `proxy-${resp.source}` };
+        const url = `https://min-api.cryptocompare.com/data/price?fsym=${fsym}&tsyms=USD`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.USD > 0) {
+            PRICE_CACHE.set(symbol, { price: data.USD, timestamp: Date.now() });
+            return { price: data.USD, source: 'cryptocompare' };
         }
-    } catch (e: any) {
-        console.error(`[MarketData] Proxy Exception:`, e.message);
+    } catch (e) {
+        console.warn(`[MarketData] CryptoCompare failed for ${symbol}`);
     }
 
-    // 1. Try Direct Fallbacks (Bybit/Binance) - Might be blocked by CORS but worth a shot
-    const candidates = [normalizedSymbol];
-    if (symbol !== normalizedSymbol) candidates.push(symbol);
-
-    for (const s of candidates) {
-        try {
-            const data = await withTimeout(
-                fetch(`${BYBIT_V5_URL}/tickers?category=linear&symbol=${s}`).then(r => r.json()),
-                5000
-            );
-            if (data.retCode === 0 && data.result?.list?.length > 0) {
-                const p = parseFloat(data.result.list[0].lastPrice);
-                return { price: p, source: 'bybit-direct' };
-            }
-        } catch (e) { }
-    }
-
-    // ... (Blockchain Fallback stays same but returns source: 'blockchain')
+    // 3. COINGECKO (Fallback - Rate Limited)
     try {
         const coinGeckoMap: { [key: string]: string } = {
             'POLUSDT': 'matic-network', 'MATICUSDT': 'matic-network', 'WMATICUSDT': 'matic-network',
             'ETHUSDT': 'ethereum', 'BTCUSDT': 'bitcoin', 'USDCUSDT': 'usd-coin',
-            'DAIUSDT': 'dai', 'LINKUSDT': 'chainlink', 'UNIUSDT': 'uniswap',
-            'GHSTUSDT': 'aavegotchi', 'LDOUSDT': 'lido-dao', 'GRTUSDT': 'the-graph'
+            'DAIUSDT': 'dai', 'LINKUSDT': 'chainlink', 'UNIUSDT': 'uniswap'
         };
         const coinId = coinGeckoMap[normalizedSymbol] || coinGeckoMap[symbol];
         if (coinId) {
             const cgResp = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
             const cgData = await cgResp.json();
             const p = cgData[coinId]?.usd || 0;
-            if (p > 0) return { price: p, source: 'coingecko-direct' };
+            if (p > 0) {
+                PRICE_CACHE.set(symbol, { price: p, timestamp: Date.now() });
+                return { price: p, source: 'coingecko' };
+            }
         }
-    } catch (e) { }
+    } catch (e) {
+        // rate limit mostly
+    }
 
-    // Final Blockchain Resort
+    // 4. BLOCKCHAIN (Last Resort - Slow/Expensive)
     try {
-        const searchPart = normalizedSymbol.replace('USDT', '').replace('USDC', '').replace('ETH', '').replace('BTC', '');
-        let tokenKey = searchPart;
+        let tokenKey = fsym;
         if (tokenKey === 'W' || tokenKey === '') tokenKey = 'WMATIC';
-        const tokenAddress = TOKENS[tokenKey] || TOKENS[searchPart];
+        const tokenAddress = TOKENS[tokenKey] || TOKENS[fsym];
         const usdtAddress = TOKENS['USDT'];
 
         if (tokenAddress && usdtAddress) {
-            const quote = await blockchainService.getQuoteV3(tokenAddress, usdtAddress, "1.0");
-            const p = parseFloat(quote);
-            if (p > 0) return { price: p, source: 'blockchain' };
+            const result = await blockchainService.getQuoteV3(tokenAddress, usdtAddress, "1.0");
+            const p = parseFloat(result.quote);
+            if (p > 0) {
+                return { price: p, source: 'blockchain' };
+            }
         }
     } catch (e) { }
 

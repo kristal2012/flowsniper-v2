@@ -9,7 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/body-parser": "^1.19.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "body-parser": "^2.2.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "ethers": "^6.13.5",
+    "express": "^5.2.1",
     "https-proxy-agent": "^7.0.5",
     "lucide-react": "^0.562.0",
     "node-fetch": "^3.3.2",
